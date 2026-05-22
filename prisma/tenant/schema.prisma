@@ -1,0 +1,490 @@
+// ============================================================================
+// LMS Multi-Tenant SaaS — Tenant Schema (tenant_xxx)
+// ----------------------------------------------------------------------------
+// Deployed into each tenant's own PostgreSQL schema via prisma migrate deploy.
+// Every table here is fully scoped to one school — complete isolation.
+// Auth flow: resolve tenant from subdomain → look up user in THIS schema.
+// ============================================================================
+
+generator tenantClient {
+  provider      = "prisma-client-js"
+  output        = "../../src/generated/tenant-client"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  school_admin
+  principal
+  finance
+  teacher
+  student
+  admission
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  inactive
+  suspended
+
+  @@map("user_status")
+}
+
+enum StudentStatus {
+  active
+  alumni
+  transferred
+  withdrawn
+
+  @@map("student_status")
+}
+
+enum EnrollmentStatus {
+  active
+  transferred
+  graduated
+  dropped
+
+  @@map("enrollment_status")
+}
+
+enum Gender {
+  male
+  female
+
+  @@map("gender")
+}
+
+enum TeacherStatus {
+  active
+  inactive
+
+  @@map("teacher_status")
+}
+
+enum EmploymentStatus {
+  pns
+  p3k
+  tetap
+  honorer
+
+  @@map("employment_status")
+}
+
+enum PortfolioType {
+  project
+  extracurricular
+  certificate
+  personal_development
+  other
+
+  @@map("portfolio_type")
+}
+
+enum AchievementCategory {
+  academic
+  non_academic
+  sports
+  arts
+  organization
+  competition
+
+  @@map("achievement_category")
+}
+
+enum AchievementLevel {
+  school
+  district
+  city
+  provincial
+  national
+  international
+
+  @@map("achievement_level")
+}
+
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+
+  @@map("day_of_week")
+}
+
+enum ScheduleStatus {
+  draft
+  published
+  archived
+
+  @@map("schedule_status")
+}
+
+
+// ============================================================================
+// IDENTITY & ACCESS
+// ============================================================================
+
+/// All user accounts for this school — admin, finance, principal, teacher, student.
+/// Authentication always resolves tenant from subdomain first, then looks here.
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String?    @unique
+  username     String?    @unique
+  phone        String?
+  passwordHash String?    @map("password_hash")
+  fullName     String     @map("full_name")
+  avatarUrl    String?    @map("avatar_url")
+  role         UserRole
+  status       UserStatus @default(active)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?                  @map("deleted_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+
+  @@map("users")
+}
+
+// ============================================================================
+// ROLE-SPECIFIC PROFILES
+// ============================================================================
+
+/// Student-specific data. One-to-one with User where role = student.
+/// tenantId omitted — schema-level isolation already scopes every row to this school.
+model StudentProfile {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @unique @map("user_id") @db.Uuid
+  nisn       String?   @unique                      // Nomor Induk Siswa Nasional
+  nik        String?   @unique                      // Nomor Induk Kependudukan
+  birthDate  DateTime?                @map("birth_date")  @db.Date
+  birthPlace String?                  @map("birth_place")
+  gender     Gender?
+  religion   String?
+  address    String?
+  phone      String?
+  photoUrl   String?                  @map("photo_url")
+  entryYear  Int?                     @map("entry_year")  @db.SmallInt
+  status     StudentStatus            @default(active)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  user         User                 @relation(fields: [userId], references: [id])
+  enrollments  Enrollment[]
+  guardians    Guardian[]
+  portfolios   StudentPortfolio[]
+  achievements StudentAchievement[]
+
+  @@map("student_profiles")
+}
+
+/// Wali murid / guardian. One student can have multiple guardians.
+model Guardian {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId String   @map("student_profile_id") @db.Uuid
+  name             String
+  relationship     String?
+  phone            String?
+  email            String?
+  address          String?
+  isPrimary        Boolean  @default(false) @map("is_primary")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+
+  @@map("guardians")
+}
+
+/// Teacher-specific data. One-to-one with User where role = teacher.
+model TeacherProfile {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String           @unique          @map("user_id")          @db.Uuid
+  nuptk            String?
+  nik              String?          @unique
+  birthDate        DateTime?                         @map("birth_date")       @db.Date
+  birthPlace       String?                           @map("birth_place")
+  gender           Gender?
+  religion         String?
+  phone            String?
+  email            String?
+  employmentStatus EmploymentStatus?                 @map("employment_status")
+  photoUrl         String?                           @map("photo_url")
+  bio              String?
+  status           TeacherStatus    @default(active)
+  createdAt        DateTime         @default(now())  @map("created_at")       @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt       @map("updated_at")       @db.Timestamptz(6)
+  deletedAt        DateTime?                         @map("deleted_at")       @db.Timestamptz(6)
+
+  user          User                  @relation(fields: [userId], references: [id])
+  classSubjects ClassSubject[]
+  schedules     Schedule[]
+  requirements  ScheduleRequirement[]
+  unavailability TeacherUnavailability[]
+
+  @@map("teacher_profiles")
+}
+
+// ============================================================================
+// ACADEMIC STRUCTURE
+// ============================================================================
+
+/// Rombel / kelas (e.g. "X IPA 1" semester 1 T.A. 2025/2026).
+model Classroom {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  gradeLevel     Int       @map("grade_level") @db.SmallInt
+  academicYear   String    @map("academic_year")
+  semester       Int       @db.SmallInt
+  homeroomUserId String?   @map("homeroom_user_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  enrollments   Enrollment[]
+  classSubjects ClassSubject[]
+  schedules     Schedule[]
+  requirements  ScheduleRequirement[]
+
+  @@unique([name, academicYear, semester])
+  @@map("classrooms")
+}
+
+/// Mata pelajaran milik sekolah ini.
+model Subject {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String?
+  name        String
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  classSubjects ClassSubject[]
+  portfolios    StudentPortfolio[]
+  schedules     Schedule[]
+  requirements  ScheduleRequirement[]
+
+  @@map("subjects")
+}
+
+/// Penugasan guru ke kelas + mata pelajaran.
+model ClassSubject {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId      String         @map("classroom_id")       @db.Uuid
+  subjectId        String         @map("subject_id")         @db.Uuid
+  teacherProfileId String?        @map("teacher_profile_id") @db.Uuid
+
+  classroom Classroom       @relation(fields: [classroomId],      references: [id])
+  subject   Subject         @relation(fields: [subjectId],         references: [id])
+  teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+
+  @@unique([classroomId, subjectId])
+  @@map("class_subjects")
+}
+
+/// Siswa masuk ke kelas.
+model Enrollment {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId String           @map("student_profile_id") @db.Uuid
+  classroomId      String           @map("classroom_id")       @db.Uuid
+  enrolledAt       DateTime         @default(now()) @map("enrolled_at") @db.Timestamptz(6)
+  status           EnrollmentStatus @default(active)
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  classroom      Classroom      @relation(fields: [classroomId],      references: [id])
+
+  @@unique([studentProfileId, classroomId])
+  @@map("enrollments")
+}
+
+// ============================================================================
+// STUDENT PORTFOLIO & ACHIEVEMENTS
+// ============================================================================
+
+/// Portfolio entries: projects, extracurriculars, certificates, personal development.
+model StudentPortfolio {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId String        @map("student_profile_id") @db.Uuid
+  title            String
+  type             PortfolioType
+  description      String?
+  subjectId        String?       @map("subject_id") @db.Uuid
+  startDate        DateTime?     @map("start_date") @db.Date
+  endDate          DateTime?     @map("end_date")   @db.Date
+  createdAt        DateTime      @default(now())    @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt         @map("updated_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile       @relation(fields: [studentProfileId], references: [id])
+  subject        Subject?             @relation(fields: [subjectId],        references: [id])
+  attachments    PortfolioAttachment[]
+
+  @@map("student_portfolios")
+}
+
+model PortfolioAttachment {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
+  fileUrl     String   @map("file_url")
+  fileName    String   @map("file_name")
+  mimeType    String   @map("mime_type")
+  sizeBytes   Int      @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portfolio StudentPortfolio @relation(fields: [portfolioId], references: [id])
+
+  @@map("portfolio_attachments")
+}
+
+/// Academic and non-academic achievements with level and organizer info.
+model StudentAchievement {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId String              @map("student_profile_id") @db.Uuid
+  title            String
+  category         AchievementCategory
+  level            AchievementLevel?
+  description      String?
+  organizer        String?
+  eventName        String?             @map("event_name")
+  achievedAt       DateTime            @map("achieved_at") @db.Date
+  rank             String?
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile          @relation(fields: [studentProfileId], references: [id])
+  attachments    AchievementAttachment[]
+
+  @@map("student_achievements")
+}
+
+model AchievementAttachment {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  achievementId String   @map("achievement_id") @db.Uuid
+  fileUrl       String   @map("file_url")
+  fileName      String   @map("file_name")
+  mimeType      String   @map("mime_type")
+  sizeBytes     Int      @map("size_bytes")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  achievement StudentAchievement @relation(fields: [achievementId], references: [id])
+
+  @@map("achievement_attachments")
+}
+
+// ============================================================================
+// SCHEDULING
+// ============================================================================
+
+/// Physical rooms available for scheduling.
+model Room {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique
+  capacity    Int?
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  schedules    Schedule[]
+  requirements ScheduleRequirement[]
+
+  @@map("rooms")
+}
+
+/// Configurable lesson periods (e.g. 07:00–07:45).
+model TimeSlot {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  label     String                          // "Jam ke-1"
+  startTime String   @map("start_time")     // "07:00"
+  endTime   String   @map("end_time")       // "07:45"
+  sortOrder Int      @map("sort_order")     @db.SmallInt
+
+  schedules      Schedule[]
+  unavailability TeacherUnavailability[]
+
+  @@map("time_slots")
+}
+
+/// One schedule entry = one class–subject–teacher–room–timeslot–day combination.
+model Schedule {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId      String         @map("classroom_id")       @db.Uuid
+  subjectId        String         @map("subject_id")         @db.Uuid
+  teacherProfileId String?        @map("teacher_profile_id") @db.Uuid
+  roomId           String?        @map("room_id")            @db.Uuid
+  timeSlotId       String         @map("time_slot_id")       @db.Uuid
+  dayOfWeek        DayOfWeek      @map("day_of_week")
+  academicYear     String         @map("academic_year")
+  semester         Int            @db.SmallInt
+  status           ScheduleStatus @default(draft)
+  notes            String?
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?                      @map("deleted_at") @db.Timestamptz(6)
+
+  classroom Classroom       @relation(fields: [classroomId],      references: [id])
+  subject   Subject         @relation(fields: [subjectId],        references: [id])
+  teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+  room      Room?           @relation(fields: [roomId],           references: [id])
+  timeSlot  TimeSlot        @relation(fields: [timeSlotId],       references: [id])
+
+  @@map("schedules")
+}
+
+// ============================================================================
+// AUTO-SCHEDULING INPUTS
+// ============================================================================
+
+/// Defines how many sessions per week a subject needs in a class.
+/// This is the input consumed by the greedy auto-scheduler.
+model ScheduleRequirement {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId      String   @map("classroom_id")       @db.Uuid
+  subjectId        String   @map("subject_id")         @db.Uuid
+  teacherProfileId String?  @map("teacher_profile_id") @db.Uuid
+  roomId           String?  @map("room_id")            @db.Uuid
+  sessionsPerWeek  Int      @map("sessions_per_week")  @db.SmallInt
+  academicYear     String   @map("academic_year")
+  semester         Int      @db.SmallInt
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  classroom Classroom       @relation(fields: [classroomId],      references: [id])
+  subject   Subject         @relation(fields: [subjectId],        references: [id])
+  teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+  room      Room?           @relation(fields: [roomId],           references: [id])
+
+  @@unique([classroomId, subjectId, academicYear, semester])
+  @@map("schedule_requirements")
+}
+
+/// Teacher unavailability — slots where teacher CANNOT be assigned.
+model TeacherUnavailability {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
+  dayOfWeek        DayOfWeek @map("day_of_week")
+  timeSlotId       String    @map("time_slot_id") @db.Uuid
+  reason           String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  teacher  TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+  timeSlot TimeSlot       @relation(fields: [timeSlotId],       references: [id])
+
+  @@unique([teacherProfileId, dayOfWeek, timeSlotId])
+  @@map("teacher_unavailability")
+}
+

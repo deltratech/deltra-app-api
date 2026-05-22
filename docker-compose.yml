@@ -1,0 +1,103 @@
+services:
+  api:
+    build:
+      context: .
+      target: development
+    container_name: deltra-api
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - deltra-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: deltra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-deltra}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - deltra-network
+
+  pgadmin:
+    image: dpage/pgadmin4:9.14
+    container_name: deltra-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@deltra.id}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - deltra-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: deltra-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - deltra-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: deltra-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-deltra}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-deltra123}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console (browser)
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - deltra-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  api_node_modules:
+
+networks:
+  deltra-network:
+    driver: bridge
