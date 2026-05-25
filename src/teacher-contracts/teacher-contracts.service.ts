@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
+import { StorageService } from '../storage/storage.service';
 import { EmploymentStatus } from '../common/enums/employment-status.enum';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
 import {
@@ -13,6 +14,7 @@ import { UpdateTeacherContractDto } from './dto/update-teacher-contract.dto';
 
 type ActorContext = { userId: string; tenantSlug?: string; isSuperAdmin?: boolean };
 type EmploymentStatusLike = EmploymentStatus | `${EmploymentStatus}`;
+type TemplateTypeLike = TeacherContractTemplateType | `${TeacherContractTemplateType}`;
 
 const PROFILE_INCLUDE = {
   user: { select: { id: true, fullName: true, email: true, phone: true } },
@@ -29,23 +31,38 @@ const PROFILE_INCLUDE = {
 
 @Injectable()
 export class TeacherContractsService {
-  constructor(private readonly tenantPrisma: PrismaTenantService) {}
+  constructor(
+    private readonly tenantPrisma: PrismaTenantService,
+    private readonly storage: StorageService,
+  ) {}
 
-  async createTemplate(dto: CreateContractTemplateDto) {
+  async createTemplate(dto: CreateContractTemplateDto, file: Express.Multer.File) {
     const existing = await this.tenantPrisma.client.teacherContractTemplate.findUnique({
       where: { code: dto.code },
     });
     if (existing) throw new ConflictException(`Template code '${dto.code}' already exists`);
+
+    const templateFileUrl = await this.storage.upload(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      'teacher-contract-templates',
+      'shared',
+    );
 
     return this.tenantPrisma.client.teacherContractTemplate.create({
       data: {
         code: dto.code,
         name: dto.name,
         templateType: dto.templateType as any,
-        body: dto.body,
+        body: dto.body ?? null,
+        templateFileUrl,
+        templateFileName: file.originalname,
+        templateMimeType: file.mimetype,
+        templateSizeBytes: file.size,
         version: dto.version ?? 1,
         isActive: dto.isActive ?? true,
-      },
+      } as any,
     });
   }
 
@@ -60,7 +77,39 @@ export class TeacherContractsService {
     });
   }
 
-  updateTemplate(id: string, dto: UpdateContractTemplateDto) {
+  async updateTemplate(id: string, dto: UpdateContractTemplateDto, file?: Express.Multer.File) {
+    const existing = await this.tenantPrisma.client.teacherContractTemplate.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException(`Contract template ${id} not found`);
+
+    let filePatch:
+      | {
+          templateFileUrl: string;
+          templateFileName: string;
+          templateMimeType: string;
+          templateSizeBytes: number;
+        }
+      | undefined;
+
+    if (file) {
+      const newTemplateFileUrl = await this.storage.upload(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        'teacher-contract-templates',
+        'shared',
+      );
+      const existingTemplateFileUrl = (existing as any).templateFileUrl as string | undefined;
+      if (existingTemplateFileUrl) await this.storage.delete(existingTemplateFileUrl);
+      filePatch = {
+        templateFileUrl: newTemplateFileUrl,
+        templateFileName: file.originalname,
+        templateMimeType: file.mimetype,
+        templateSizeBytes: file.size,
+      };
+    }
+
     return this.tenantPrisma.client.teacherContractTemplate.update({
       where: { id },
       data: {
@@ -69,6 +118,7 @@ export class TeacherContractsService {
         ...(dto.body !== undefined ? { body: dto.body } : {}),
         ...(dto.version !== undefined ? { version: dto.version } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(filePatch ?? {}),
       },
     });
   }
@@ -241,7 +291,7 @@ export class TeacherContractsService {
     return { templateType, template, variables, renderedContent };
   }
 
-  private defaultTemplateBody(type: TeacherContractTemplateType) {
+  private defaultTemplateBody(type: TemplateTypeLike) {
     if (type === TeacherContractTemplateType.staff) {
       return 'Kontrak kerja staff untuk {teacherName} sebagai {roleTitle} selama {contractPeriod}.';
     }
@@ -261,7 +311,7 @@ export class TeacherContractsService {
     return TeacherContractTemplateType.guru_tetap;
   }
 
-  private resolveRoleTitle(type: TeacherContractTemplateType, subjects: string[]) {
+  private resolveRoleTitle(type: TemplateTypeLike, subjects: string[]) {
     if (type === TeacherContractTemplateType.staff) return 'Staff Sekolah';
     return subjects.length > 0 ? `Guru ${subjects[0]}` : 'Guru';
   }

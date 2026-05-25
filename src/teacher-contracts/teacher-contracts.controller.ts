@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
 import { CreateTeacherContractDto, TeacherContractStatus, TeacherContractTemplateType } from './dto/create-teacher-contract.dto';
@@ -15,9 +16,28 @@ export class TeacherContractsController {
   constructor(private readonly teacherContractsService: TeacherContractsService) {}
 
   @Post('templates')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string' },
+        name: { type: 'string' },
+        templateType: { type: 'string', enum: ['guru_tetap', 'guru_honorer', 'staff'] },
+        body: { type: 'string' },
+        version: { type: 'number' },
+        isActive: { type: 'boolean' },
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['code', 'name', 'templateType', 'file'],
+    },
+  })
   @ApiOperation({ summary: 'Create teacher/staff contract template' })
-  createTemplate(@Body() dto: CreateContractTemplateDto) {
-    return this.teacherContractsService.createTemplate(dto);
+  createTemplate(@Body() dto: CreateContractTemplateDto, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No template file uploaded');
+    this.validateDocxTemplateFile(file);
+    return this.teacherContractsService.createTemplate(dto, file);
   }
 
   @Get('templates')
@@ -35,12 +55,29 @@ export class TeacherContractsController {
   }
 
   @Patch('templates/:id')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        templateType: { type: 'string', enum: ['guru_tetap', 'guru_honorer', 'staff'] },
+        body: { type: 'string' },
+        version: { type: 'number' },
+        isActive: { type: 'boolean' },
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
   @ApiOperation({ summary: 'Update contract template' })
   updateTemplate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateContractTemplateDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.teacherContractsService.updateTemplate(id, dto);
+    if (file) this.validateDocxTemplateFile(file);
+    return this.teacherContractsService.updateTemplate(id, dto, file);
   }
 
   @Post('preview')
@@ -112,5 +149,15 @@ export class TeacherContractsController {
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
     return this.teacherContractsService.setPdfUrl(id, body.pdfUrl, user);
+  }
+
+  private validateDocxTemplateFile(file: Express.Multer.File) {
+    const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (file.mimetype !== mime) {
+      throw new BadRequestException('Only DOCX template files are accepted');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException('Template file must be under 10 MB');
+    }
   }
 }

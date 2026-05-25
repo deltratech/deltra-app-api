@@ -87,6 +87,7 @@ export class TenantsController {
   // ── Migrations ──────────────────────────────────────────────────────────────
 
   @Post('migrate-all')
+  @Public()
   @ApiOperation({
     summary: 'Apply pending migrations to ALL tenant schemas',
     description:

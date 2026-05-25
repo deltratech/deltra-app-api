@@ -17,9 +17,9 @@ export class CreateContractTemplateDto {
   @IsEnum(TeacherContractTemplateType)
   templateType: TeacherContractTemplateType;
 
-  @ApiProperty({ example: 'Kontrak {teacherName} sebagai {roleTitle}...' })
+  @ApiPropertyOptional({ example: 'Kontrak {teacherName} sebagai {roleTitle}...' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   body: string;
 
   @ApiPropertyOptional({ default: 1 })

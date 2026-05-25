@@ -305,7 +305,11 @@ model TeacherContractTemplate {
   code         String                      @unique
   name         String
   templateType TeacherContractTemplateType @map("template_type")
-  body         String
+  body         String?
+  templateFileUrl String?                   @map("template_file_url")
+  templateFileName String?                  @map("template_file_name")
+  templateMimeType String?                  @map("template_mime_type")
+  templateSizeBytes Int?                    @map("template_size_bytes")
   version      Int                         @default(1)
   isActive     Boolean                     @default(true) @map("is_active")
   createdAt    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
