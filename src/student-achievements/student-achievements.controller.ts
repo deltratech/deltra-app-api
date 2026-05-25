@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StudentAchievementsService } from './student-achievements.service';
 import { CreateAchievementDto } from './dto/create-achievement.dto';
@@ -25,7 +25,7 @@ import { AchievementCategory } from '../common/enums/achievement-category.enum';
 import { AchievementLevel } from '../common/enums/achievement-level.enum';
 
 @ApiTags('Student Achievements')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('student-achievements')
 export class StudentAchievementsController {
   constructor(private readonly service: StudentAchievementsService) {}

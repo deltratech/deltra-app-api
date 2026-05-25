@@ -2,7 +2,7 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SchedulesService } from './schedules.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -10,7 +10,7 @@ import { DayOfWeek } from '../common/enums/day-of-week.enum';
 import { ScheduleStatus } from '../common/enums/schedule-status.enum';
 
 @ApiTags('Schedules')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('schedules')
 export class SchedulesController {
   constructor(private readonly service: SchedulesService) {}

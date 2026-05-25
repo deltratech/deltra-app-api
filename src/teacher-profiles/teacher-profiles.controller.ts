@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TeacherProfilesService } from './teacher-profiles.service';
 import { CreateTeacherProfileDto } from './dto/create-teacher-profile.dto';
@@ -24,7 +24,7 @@ import { UpdateTeacherProfileDto } from './dto/update-teacher-profile.dto';
 import { TeacherStatus } from '../common/enums/teacher-status.enum';
 
 @ApiTags('Teacher Profiles')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('teacher-profiles')
 export class TeacherProfilesController {
   constructor(private readonly service: TeacherProfilesService) {}

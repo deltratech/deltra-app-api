@@ -2,13 +2,13 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TimeSlotsService } from './time-slots.service';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
 import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 
 @ApiTags('Time Slots')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('time-slots')
 export class TimeSlotsController {
   constructor(private readonly service: TimeSlotsService) {}

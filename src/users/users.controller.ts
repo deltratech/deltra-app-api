@@ -15,7 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
@@ -26,7 +26,7 @@ import { UpdateRolesDto } from './dto/update-roles.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 
 @ApiTags('Users')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('users')
 export class UsersController {
   constructor(

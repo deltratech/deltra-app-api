@@ -2,12 +2,12 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseUUIDPipe, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TeacherUnavailabilityService } from './teacher-unavailability.service';
 import { CreateUnavailabilityDto } from './dto/create-unavailability.dto';
 
 @ApiTags('Teacher Unavailability')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('teacher-unavailability')
 export class TeacherUnavailabilityController {
   constructor(private readonly service: TeacherUnavailabilityService) {}

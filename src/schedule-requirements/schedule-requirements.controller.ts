@@ -2,13 +2,13 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ScheduleRequirementsService } from './schedule-requirements.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
 
 @ApiTags('Schedule Requirements')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('schedule-requirements')
 export class ScheduleRequirementsController {
   constructor(private readonly service: ScheduleRequirementsService) {}

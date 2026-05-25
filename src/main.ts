@@ -1,10 +1,8 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { GlobalExceptionFilter } from './common/filters/tenant-exception.filter';
-import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,15 +13,11 @@ async function bootstrap() {
 
   app.useGlobalFilters(new GlobalExceptionFilter());
 
-  app.useGlobalGuards(
-    new ApiKeyGuard(app.get(ConfigService), app.get(Reflector)),
-  );
-
   const config = new DocumentBuilder()
     .setTitle('Deltra App API')
     .setDescription('Deltra application API')
     .setVersion('1.0')
-    .addApiKey({ type: 'apiKey', in: 'header', name: 'x-api-key' }, 'x-api-key')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

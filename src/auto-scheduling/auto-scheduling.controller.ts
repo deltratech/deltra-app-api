@@ -1,10 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AutoSchedulingService } from './auto-scheduling.service';
 import { GenerateScheduleDto } from './dto/generate-schedule.dto';
 
 @ApiTags('Auto Scheduling')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('auto-scheduling')
 export class AutoSchedulingController {
   constructor(private readonly service: AutoSchedulingService) {}

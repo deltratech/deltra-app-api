@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StudentPortfoliosService } from './student-portfolios.service';
 import { CreatePortfolioDto } from './dto/create-portfolio.dto';
@@ -24,7 +24,7 @@ import { UpdatePortfolioDto } from './dto/update-portfolio.dto';
 import { PortfolioType } from '../common/enums/portfolio-type.enum';
 
 @ApiTags('Student Portfolios')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('student-portfolios')
 export class StudentPortfoliosController {
   constructor(private readonly service: StudentPortfoliosService) {}

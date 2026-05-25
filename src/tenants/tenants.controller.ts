@@ -13,7 +13,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -22,7 +22,7 @@ import { UpsertTenantSettingsDto } from './dto/upsert-tenant-settings.dto';
 import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('Tenants')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('tenants')
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}

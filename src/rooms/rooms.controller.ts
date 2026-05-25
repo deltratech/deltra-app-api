@@ -2,13 +2,13 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 @ApiTags('Rooms')
-@ApiSecurity('x-api-key')
+@ApiBearerAuth()
 @Controller('rooms')
 export class RoomsController {
   constructor(private readonly service: RoomsService) {}
