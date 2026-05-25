@@ -146,6 +146,20 @@ export class TenantsService {
     }
   }
 
+  async validateSlug(rawSlug: string) {
+    const slug = rawSlug.trim().toLowerCase();
+    const existing = await this.prisma.tenant.findFirst({
+      where: { slug, deletedAt: null },
+      select: { id: true, slug: true },
+    });
+
+    return {
+      slug,
+      available: !existing,
+      message: existing ? `Slug '${slug}' is already taken` : `Slug '${slug}' is available`,
+    };
+  }
+
   async remove(id: string) {
     await this.findOne(id);
     return this.prisma.tenant.update({

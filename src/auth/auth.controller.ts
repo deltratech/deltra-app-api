@@ -56,7 +56,7 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current authenticated user profile' })
-  me(@CurrentUser() user: { userId: string; tenantSlug: string }) {
-    return this.authService.me(user.userId, user.tenantSlug);
+  me(@CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin: boolean }) {
+    return this.authService.me(user.userId, user.tenantSlug, user.isSuperAdmin);
   }
 }

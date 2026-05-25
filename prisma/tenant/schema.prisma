@@ -81,6 +81,24 @@ enum EmploymentStatus {
   @@map("employment_status")
 }
 
+enum TeacherContractTemplateType {
+  guru_tetap
+  guru_honorer
+  staff
+
+  @@map("teacher_contract_template_type")
+}
+
+enum TeacherContractStatus {
+  draft
+  pending_signature
+  active
+  expired
+  renewed
+
+  @@map("teacher_contract_status")
+}
+
 enum PortfolioType {
   project
   extracurricular
@@ -235,8 +253,69 @@ model TeacherProfile {
   schedules     Schedule[]
   requirements  ScheduleRequirement[]
   unavailability TeacherUnavailability[]
+  contracts     TeacherContract[]
 
   @@map("teacher_profiles")
+}
+
+model TeacherContract {
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId          String                      @map("teacher_profile_id") @db.Uuid
+  templateId                String?                     @map("template_id") @db.Uuid
+  templateType              TeacherContractTemplateType @map("template_type")
+  status                    TeacherContractStatus       @default(draft)
+  contractStartDate         DateTime                    @map("contract_start_date") @db.Date
+  contractEndDate           DateTime                    @map("contract_end_date") @db.Date
+  roleTitle                 String?                     @map("role_title")
+  employmentStatus          EmploymentStatus?           @map("employment_status")
+  teachingHoursPerWeek      Int?                        @map("teaching_hours_per_week") @db.SmallInt
+  teachingAssignmentNotes   String?                     @map("teaching_assignment_notes")
+  documentTitle             String?                     @map("document_title")
+  fileUrl                   String                      @map("file_url")
+  fileName                  String                      @map("file_name")
+  mimeType                  String                      @map("mime_type")
+  sizeBytes                 Int                         @map("size_bytes")
+  placeOfSigning            String?                     @map("place_of_signing")
+  signedAt                  DateTime?                   @map("signed_at") @db.Date
+  schoolRepresentativeName  String?                     @map("school_representative_name")
+  schoolRepresentativeTitle String?                     @map("school_representative_title")
+  notes                     String?
+  variablesJson             Json?                       @map("variables_json") @db.JsonB
+  renderedContent           String?                     @map("rendered_content")
+  pdfUrl                    String?                     @map("pdf_url")
+  renewalReminderAt         DateTime?                   @map("renewal_reminder_at") @db.Timestamptz(6)
+  createdByUserId           String?                     @map("created_by_user_id") @db.Uuid
+  updatedByUserId           String?                     @map("updated_by_user_id") @db.Uuid
+  createdAt                 DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                 DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+
+  teacher  TeacherProfile         @relation(fields: [teacherProfileId], references: [id])
+  template TeacherContractTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([teacherProfileId])
+  @@index([templateType])
+  @@index([status])
+  @@index([contractStartDate, contractEndDate])
+  @@map("teacher_contracts")
+}
+
+model TeacherContractTemplate {
+  id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         String                      @unique
+  name         String
+  templateType TeacherContractTemplateType @map("template_type")
+  body         String
+  version      Int                         @default(1)
+  isActive     Boolean                     @default(true) @map("is_active")
+  createdAt    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+
+  contracts TeacherContract[]
+
+  @@index([templateType, isActive])
+  @@map("teacher_contract_templates")
 }
 
 // ============================================================================
@@ -487,4 +566,3 @@ model TeacherUnavailability {
   @@unique([teacherProfileId, dayOfWeek, timeSlotId])
   @@map("teacher_unavailability")
 }
-

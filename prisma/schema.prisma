@@ -24,6 +24,21 @@ datasource db {
 // ENUMS
 // ============================================================================
 
+enum PlatformUserRole {
+  superadmin
+  staff
+
+  @@map("platform_user_role")
+}
+
+enum PlatformUserStatus {
+  active
+  inactive
+  suspended
+
+  @@map("platform_user_status")
+}
+
 enum TenantType {
   school
   network
@@ -113,17 +128,17 @@ model TenantFeature {
 /// Accounts for the SaaS operator team. NOT for school users.
 /// School users (admin, teacher, student, etc.) live in tenant_xxx.users.
 model PlatformUser {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique @db.Citext
-  username     String?   @unique
-  passwordHash String    @map("password_hash")
-  fullName     String    @map("full_name")
-  isSuperAdmin Boolean   @default(false) @map("is_super_admin")
-  isActive     Boolean   @default(true)  @map("is_active")
-  lastLoginAt  DateTime?                 @map("last_login_at") @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @map("created_at")    @db.Timestamptz(6)
-  updatedAt    DateTime  @updatedAt      @map("updated_at")    @db.Timestamptz(6)
-  deletedAt    DateTime?                 @map("deleted_at")    @db.Timestamptz(6)
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String              @unique @db.Citext
+  username     String?             @unique
+  passwordHash String              @map("password_hash")
+  fullName     String              @map("full_name")
+  role         PlatformUserRole    @default(superadmin)
+  status       PlatformUserStatus  @default(active)
+  lastLoginAt  DateTime?           @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?           @map("deleted_at") @db.Timestamptz(6)
 
   @@map("platform_users")
 }

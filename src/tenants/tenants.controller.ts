@@ -20,6 +20,7 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { UpsertTenantSettingsDto } from './dto/upsert-tenant-settings.dto';
 import { Public } from '../common/decorators/public.decorator';
+import { ValidateTenantSlugDto } from './dto/validate-tenant-slug.dto';
 
 @ApiTags('Tenants')
 @ApiBearerAuth()
@@ -34,6 +35,14 @@ export class TenantsController {
   @ApiOperation({ summary: 'Register a new tenant (public — no API key required)' })
   register(@Body() dto: RegisterTenantDto) {
     return this.tenantsService.register(dto);
+  }
+
+  @Public()
+  @Get('validate-slug')
+  @ApiOperation({ summary: 'Validate whether a tenant slug is available' })
+  @ApiQuery({ name: 'slug', required: true, description: 'Slug to validate' })
+  validateSlug(@Query() query: ValidateTenantSlugDto) {
+    return this.tenantsService.validateSlug(query.slug);
   }
 
   // ── Tenants ─────────────────────────────────────────────────────────────────

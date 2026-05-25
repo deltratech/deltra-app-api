@@ -15,14 +15,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
-    if (!payload.sub || !payload.tenantSlug) {
+    if (!payload.sub) throw new UnauthorizedException('Invalid token');
+    if (!payload.isSuperAdmin && !payload.tenantSlug) {
       throw new UnauthorizedException('Invalid token');
     }
-    // Returned value is attached to request.user
     return {
       userId: payload.sub,
       tenantId: payload.tenantId,
       tenantSlug: payload.tenantSlug,
+      isSuperAdmin: payload.isSuperAdmin ?? false,
     };
   }
 }

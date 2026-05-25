@@ -24,6 +24,7 @@ import { SchedulesModule } from './schedules/schedules.module';
 import { ScheduleRequirementsModule } from './schedule-requirements/schedule-requirements.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
 import { AutoSchedulingModule } from './auto-scheduling/auto-scheduling.module';
+import { TeacherContractsModule } from './teacher-contracts/teacher-contracts.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AutoSchedulingModule } from './auto-scheduling/auto-scheduling.module';
     ScheduleRequirementsModule,
     TeacherUnavailabilityModule,
     AutoSchedulingModule,
+    TeacherContractsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
@@ -63,8 +65,6 @@ export class AppModule implements NestModule {
         { path: 'api/docs/(.*)', method: RequestMethod.GET },
         { path: 'tenants', method: RequestMethod.ALL },
         { path: 'tenants/(.*)', method: RequestMethod.ALL },
-        { path: 'users', method: RequestMethod.ALL },
-        { path: 'users/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

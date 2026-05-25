@@ -8,8 +8,9 @@ const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60; // 7 days
 
 interface RefreshPayload {
   userId: string;
-  tenantId: string;
-  tenantSlug: string;
+  tenantId?: string;
+  tenantSlug?: string;
+  isSuperAdmin?: boolean;
 }
 
 @Injectable()

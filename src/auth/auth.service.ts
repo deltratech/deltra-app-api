@@ -43,6 +43,47 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
+    if (!dto.tenantSlug) return this.loginAsSuperAdmin(dto);
+    return this.loginAsTenant(dto as LoginDto & { tenantSlug: string });
+  }
+
+  private async loginAsSuperAdmin(dto: LoginDto) {
+    const user = await this.prisma.platformUser.findFirst({
+      where: {
+        OR: [{ email: dto.identifier }, { username: dto.identifier }],
+        status: 'active',
+        deletedAt: null,
+      },
+    });
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    await this.prisma.platformUser.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const isSuperAdmin = user.role === 'superadmin';
+    const accessToken = this.signSuperAdminToken(user.id, isSuperAdmin);
+    const refreshToken = await this.generateRefreshToken(user.id, undefined, undefined, isSuperAdmin);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        status: user.status,
+      },
+    };
+  }
+
+  private async loginAsTenant(dto: LoginDto & { tenantSlug: string }) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug: dto.tenantSlug, deletedAt: null },
     });
@@ -98,13 +139,17 @@ export class AuthService {
     const payload = await this.redis.getRefreshToken(refreshToken);
     if (!payload) throw new UnauthorizedException('Invalid or expired refresh token');
 
-    // Rotate: invalidate old token and issue a new pair
     await this.redis.deleteRefreshToken(refreshToken);
-    const newAccessToken = this.signToken(payload.userId, payload.tenantId, payload.tenantSlug);
+
+    const newAccessToken = payload.isSuperAdmin
+      ? this.signSuperAdminToken(payload.userId, payload.isSuperAdmin)
+      : this.signToken(payload.userId, payload.tenantId!, payload.tenantSlug!);
+
     const newRefreshToken = await this.generateRefreshToken(
       payload.userId,
       payload.tenantId,
       payload.tenantSlug,
+      payload.isSuperAdmin,
     );
 
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -158,8 +203,16 @@ export class AuthService {
     };
   }
 
-  async me(userId: string, tenantSlug: string) {
-    const db = this.tenantPrisma.forSchema(toSchemaName(tenantSlug));
+  async me(userId: string, tenantSlug: string | undefined, isSuperAdmin: boolean) {
+    if (isSuperAdmin) {
+      const user = await this.prisma.platformUser.findFirst({
+        where: { id: userId, status: 'active', deletedAt: null },
+        select: { id: true, email: true, username: true, fullName: true, role: true, status: true, lastLoginAt: true, createdAt: true },
+      });
+      if (!user) throw new NotFoundException('User not found');
+      return user;
+    }
+    const db = this.tenantPrisma.forSchema(toSchemaName(tenantSlug!));
     const user = await db.user.findFirst({
       where: { id: userId, deletedAt: null, status: 'active' },
       select: SAFE_USER_SELECT,
@@ -221,13 +274,19 @@ export class AuthService {
     return this.jwt.sign(payload);
   }
 
+  private signSuperAdminToken(userId: string, isSuperAdmin: boolean): string {
+    const payload: JwtPayload = { sub: userId, isSuperAdmin };
+    return this.jwt.sign(payload);
+  }
+
   private async generateRefreshToken(
     userId: string,
-    tenantId: string,
-    tenantSlug: string,
+    tenantId?: string,
+    tenantSlug?: string,
+    isSuperAdmin?: boolean,
   ): Promise<string> {
     const token = randomBytes(40).toString('hex');
-    await this.redis.saveRefreshToken(token, { userId, tenantId, tenantSlug });
+    await this.redis.saveRefreshToken(token, { userId, tenantId, tenantSlug, isSuperAdmin });
     return token;
   }
 }
