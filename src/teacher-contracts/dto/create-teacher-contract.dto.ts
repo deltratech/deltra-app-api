@@ -67,25 +67,15 @@ export class CreateTeacherContractDto {
   @IsString()
   teachingAssignmentNotes?: string;
 
-  @ApiPropertyOptional({ example: 'Bandung' })
-  @IsOptional()
-  @IsString()
-  placeOfSigning?: string;
-
   @ApiPropertyOptional({ example: '2026-06-15' })
   @IsOptional()
   @IsDateString()
   signedAt?: string;
 
-  @ApiPropertyOptional({ example: 'Drs. Budi Santoso, M.Pd' })
+  @ApiPropertyOptional({ description: 'Base64 text of e-signature image/string' })
   @IsOptional()
   @IsString()
-  schoolRepresentativeName?: string;
-
-  @ApiPropertyOptional({ example: 'Kepala Sekolah' })
-  @IsOptional()
-  @IsString()
-  schoolRepresentativeTitle?: string;
+  eSignature?: string;
 
   @ApiPropertyOptional({ example: 'Kontrak Kerja Guru Matematika 2026-2027.pdf' })
   @IsOptional()

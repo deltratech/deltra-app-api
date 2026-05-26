@@ -4,6 +4,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand,
   PutBucketPolicyCommand,
@@ -92,6 +93,21 @@ export class StorageService implements OnModuleInit {
     if (!url.startsWith(prefix)) return;
     const key = url.slice(prefix.length);
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  /** Read file bytes by its full public URL. */
+  async read(url: string): Promise<Buffer> {
+    const prefix = `${this.publicUrl}/${this.bucket}/`;
+    if (!url.startsWith(prefix)) {
+      throw new Error('Invalid storage URL');
+    }
+    const key = url.slice(prefix.length);
+    const result = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    const bytes = await result.Body?.transformToByteArray();
+    if (!bytes) throw new Error('Storage object body is empty');
+    return Buffer.from(bytes);
   }
 
   // ── Setup ────────────────────────────────────────────────────────────────────

@@ -125,6 +125,12 @@ export class TeacherContractsController {
     return this.teacherContractsService.findRenewalReminders(days ? Number(days) : 30);
   }
 
+  @Get('my')
+  @ApiOperation({ summary: 'Teacher self-view contracts' })
+  myContracts(@CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean }) {
+    return this.teacherContractsService.findMyContracts(user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get teacher contract by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -149,6 +155,25 @@ export class TeacherContractsController {
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
     return this.teacherContractsService.setPdfUrl(id, body.pdfUrl, user);
+  }
+
+  @Patch(':id/publish')
+  @ApiOperation({ summary: 'Publish contract and send to pending signature' })
+  publish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
+  ) {
+    return this.teacherContractsService.publish(id, user);
+  }
+
+  @Patch(':id/approve')
+  @ApiOperation({ summary: 'Teacher approves and signs contract' })
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { eSignature: string },
+    @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
+  ) {
+    return this.teacherContractsService.approve(id, body.eSignature, user);
   }
 
   private validateDocxTemplateFile(file: Express.Multer.File) {

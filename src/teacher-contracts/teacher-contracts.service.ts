@@ -1,7 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { StorageService } from '../storage/storage.service';
+import Docxtemplater from 'docxtemplater';
 import { EmploymentStatus } from '../common/enums/employment-status.enum';
+import PizZip from 'pizzip';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
 import {
   CreateTeacherContractDto,
@@ -134,6 +136,20 @@ export class TeacherContractsService {
     const end = new Date(dto.contractEndDate);
     const renewalReminderAt = this.addDays(end, -30);
 
+    const generatedDocx = payload.template?.templateFileUrl
+      ? await this.renderDocxTemplate(payload.template.templateFileUrl, payload.variables)
+      : null;
+
+    const generatedFileUrl = generatedDocx
+      ? await this.storage.upload(
+          generatedDocx.buffer,
+          generatedDocx.fileName,
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'teacher-contracts-generated',
+          actor.tenantSlug ?? 'shared',
+        )
+      : '';
+
     const created = await this.tenantPrisma.client.teacherContract.create({
       data: {
         teacherProfileId: dto.teacherProfileId,
@@ -146,14 +162,15 @@ export class TeacherContractsService {
         employmentStatus: payload.variables.employmentStatus as EmploymentStatusLike,
         teachingHoursPerWeek: Number(payload.variables.teachingHoursPerWeek),
         teachingAssignmentNotes: String(payload.variables.teachingAssignmentSummary),
-        documentTitle: `Kontrak ${payload.variables.teacherName}`,
-        fileUrl: '',
-        fileName: '',
-        mimeType: '',
-        sizeBytes: 0,
-        placeOfSigning: 'Sekolah',
-        schoolRepresentativeName: 'Pimpinan Sekolah',
-        schoolRepresentativeTitle: 'Kepala Sekolah',
+        documentTitle: generatedDocx?.fileName ?? `Kontrak ${payload.variables.teacherName}`,
+        fileUrl: generatedFileUrl,
+        fileName: generatedDocx?.fileName ?? '',
+        mimeType: generatedDocx
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : '',
+        sizeBytes: generatedDocx?.buffer.length ?? 0,
+        signedAt: dto.signedAt ? new Date(dto.signedAt) : null,
+        eSignature: dto.eSignature ?? null,
         notes: dto.notes,
         variablesJson: payload.variables as any,
         renderedContent: payload.renderedContent,
@@ -222,6 +239,8 @@ export class TeacherContractsService {
         ...(dto.employmentStatus ? { employmentStatus: dto.employmentStatus as any } : {}),
         ...(dto.teachingHoursPerWeek !== undefined ? { teachingHoursPerWeek: dto.teachingHoursPerWeek } : {}),
         ...(dto.teachingAssignmentNotes !== undefined ? { teachingAssignmentNotes: dto.teachingAssignmentNotes } : {}),
+        ...(dto.signedAt ? { signedAt: new Date(dto.signedAt) } : {}),
+        ...(dto.eSignature !== undefined ? { eSignature: dto.eSignature } : {}),
         ...(dto.documentTitle !== undefined ? { documentTitle: dto.documentTitle } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
         updatedByUserId: actor.userId,
@@ -237,6 +256,45 @@ export class TeacherContractsService {
         updatedByUserId: actor.userId,
       },
     });
+  }
+
+  async publish(id: string, actor: ActorContext) {
+    const contract = await this.findOne(id);
+    if (contract.status !== 'draft') {
+      throw new ConflictException('Only draft contracts can be published');
+    }
+    return this.tenantPrisma.client.teacherContract.update({
+      where: { id },
+      data: {
+        status: TeacherContractStatus.pending_signature as any,
+        updatedByUserId: actor.userId,
+      },
+    });
+  }
+
+  async approve(id: string, eSignature: string, actor: ActorContext) {
+    const contract = await this.findOne(id);
+    if (contract.status !== 'pending_signature') {
+      throw new ConflictException('Only pending signature contracts can be approved');
+    }
+    return this.tenantPrisma.client.teacherContract.update({
+      where: { id },
+      data: {
+        status: TeacherContractStatus.active as any,
+        eSignature,
+        signedAt: new Date(),
+        updatedByUserId: actor.userId,
+      },
+    });
+  }
+
+  async findMyContracts(actor: ActorContext) {
+    const profile = await this.tenantPrisma.client.teacherProfile.findFirst({
+      where: { userId: actor.userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('Teacher profile for current user not found');
+    return this.findAll({ teacherProfileId: profile.id });
   }
 
   findRenewalReminders(days = 30) {
@@ -304,6 +362,21 @@ export class TeacherContractsService {
       rendered = rendered.replaceAll(`{${k}}`, String(v));
     });
     return rendered;
+  }
+
+  private async renderDocxTemplate(
+    templateFileUrl: string,
+    variables: Record<string, string | number>,
+  ) {
+    const templateBuffer = await this.storage.read(templateFileUrl);
+    const zip = new PizZip(templateBuffer);
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render(variables);
+    const output = doc.getZip().generate({ type: 'nodebuffer' });
+    return {
+      buffer: output,
+      fileName: `generated-contract-${Date.now()}.docx`,
+    };
   }
 
   private resolveTemplateType(status: EmploymentStatusLike | undefined) {

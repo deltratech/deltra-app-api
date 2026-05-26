@@ -275,10 +275,8 @@ model TeacherContract {
   fileName                  String                      @map("file_name")
   mimeType                  String                      @map("mime_type")
   sizeBytes                 Int                         @map("size_bytes")
-  placeOfSigning            String?                     @map("place_of_signing")
   signedAt                  DateTime?                   @map("signed_at") @db.Date
-  schoolRepresentativeName  String?                     @map("school_representative_name")
-  schoolRepresentativeTitle String?                     @map("school_representative_title")
+  eSignature                String?                     @map("e_signature")
   notes                     String?
   variablesJson             Json?                       @map("variables_json") @db.JsonB
   renderedContent           String?                     @map("rendered_content")
