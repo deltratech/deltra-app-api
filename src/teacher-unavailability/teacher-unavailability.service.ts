@@ -11,16 +11,16 @@ export class TeacherUnavailabilityService {
       where: teacherProfileId ? { teacherProfileId } : {},
       include: {
         teacher:  { select: { id: true, user: { select: { id: true, fullName: true } } } },
-        timeSlot: true,
+        periodRow: true,
       },
-      orderBy: [{ teacherProfileId: 'asc' }, { dayOfWeek: 'asc' }, { timeSlot: { sortOrder: 'asc' } }],
+      orderBy: [{ teacherProfileId: 'asc' }, { dayOfWeek: 'asc' }, { periodRow: { sortOrder: 'asc' } }],
     });
   }
 
   async findOne(id: string) {
     const u = await this.tenantPrisma.client.teacherUnavailability.findUnique({
       where: { id },
-      include: { teacher: true, timeSlot: true },
+      include: { teacher: true, periodRow: true },
     });
     if (!u) throw new NotFoundException(`Unavailability record ${id} not found`);
     return u;
@@ -29,14 +29,14 @@ export class TeacherUnavailabilityService {
   async create(dto: CreateUnavailabilityDto) {
     const exists = await this.tenantPrisma.client.teacherUnavailability.findUnique({
       where: {
-        teacherProfileId_dayOfWeek_timeSlotId: {
+        teacherProfileId_dayOfWeek_periodRowId: {
           teacherProfileId: dto.teacherProfileId,
           dayOfWeek:        dto.dayOfWeek,
-          timeSlotId:       dto.timeSlotId,
+          periodRowId:      dto.periodRowId,
         },
       },
     });
-    if (exists) throw new ConflictException('Unavailability for this teacher/day/slot already exists');
+    if (exists) throw new ConflictException('Unavailability for this teacher/day/period already exists');
 
     return this.tenantPrisma.client.teacherUnavailability.create({ data: dto });
   }

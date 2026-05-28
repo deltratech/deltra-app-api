@@ -1,43 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEnum,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
-import { DayOfWeek } from '../../common/enums/day-of-week.enum';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { ScheduleStatus } from '../../common/enums/schedule-status.enum';
 
 export class CreateScheduleDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Classroom / class section ID' })
   @IsUUID()
   classroomId: string;
-
-  @ApiProperty()
-  @IsUUID()
-  subjectId: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUUID()
-  teacherProfileId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUUID()
-  roomId?: string;
-
-  @ApiProperty()
-  @IsUUID()
-  timeSlotId: string;
-
-  @ApiProperty({ enum: DayOfWeek })
-  @IsEnum(DayOfWeek)
-  dayOfWeek: DayOfWeek;
 
   @ApiProperty({ example: '2025/2026' })
   @IsString()
@@ -55,8 +23,8 @@ export class CreateScheduleDto {
   @IsEnum(ScheduleStatus)
   status?: ScheduleStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Source schedule ID when copying a semester/timetable' })
   @IsOptional()
-  @IsString()
-  notes?: string;
+  @IsUUID()
+  copiedFromScheduleId?: string;
 }

@@ -151,6 +151,14 @@ enum ScheduleStatus {
   @@map("schedule_status")
 }
 
+enum PeriodKind {
+  lesson
+  recess
+  break
+
+  @@map("period_kind")
+}
+
 
 // ============================================================================
 // IDENTITY & ACCESS
@@ -251,7 +259,7 @@ model TeacherProfile {
 
   user          User                  @relation(fields: [userId], references: [id])
   classSubjects ClassSubject[]
-  schedules     Schedule[]
+  scheduleEntries ScheduleEntry[]
   requirements  ScheduleRequirement[]
   unavailability TeacherUnavailability[]
   contracts     TeacherContract[]
@@ -343,6 +351,37 @@ model Classroom {
   @@map("classrooms")
 }
 
+model PeriodTemplate {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gradeLevel   Int      @map("grade_level") @db.SmallInt
+  academicYear String   @map("academic_year")
+  dayStart     String   @map("day_start")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  rows       PeriodRow[]
+
+  @@unique([gradeLevel, academicYear])
+  @@map("period_templates")
+}
+
+model PeriodRow {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId  String     @map("template_id") @db.Uuid
+  sortOrder   Int        @map("sort_order")
+  kind        PeriodKind
+  label       String
+  durationMin Int        @map("duration_min")
+  activeDays  Int[]      @default([]) @map("active_days")
+
+  template PeriodTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  entries  ScheduleEntry[]
+  unavailability TeacherUnavailability[]
+
+  @@unique([templateId, sortOrder])
+  @@map("period_rows")
+}
+
 model HomeroomAssignment {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   classroomId      String    @map("classroom_id") @db.Uuid
@@ -377,7 +416,7 @@ model Subject {
 
   classSubjects ClassSubject[]
   portfolios    StudentPortfolio[]
-  schedules     Schedule[]
+  scheduleEntries ScheduleEntry[]
   requirements  ScheduleRequirement[]
 
   @@map("subjects")
@@ -500,50 +539,58 @@ model Room {
   updatedAt   DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?                 @map("deleted_at") @db.Timestamptz(6)
 
-  schedules    Schedule[]
+  scheduleEntries ScheduleEntry[]
   requirements ScheduleRequirement[]
 
   @@map("rooms")
 }
 
 /// Configurable lesson periods (e.g. 07:00–07:45).
-model TimeSlot {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  label     String                          // "Jam ke-1"
-  startTime String   @map("start_time")     // "07:00"
-  endTime   String   @map("end_time")       // "07:45"
-  sortOrder Int      @map("sort_order")     @db.SmallInt
+/// Per-class-per-term timetable document.
+model Schedule {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId          String         @map("classroom_id") @db.Uuid
+  academicYear         String         @map("academic_year")
+  semester             Int            @db.SmallInt
+  status               ScheduleStatus @default(draft)
+  publishedAt          DateTime?      @map("published_at") @db.Timestamptz(6)
+  archivedAt           DateTime?      @map("archived_at") @db.Timestamptz(6)
+  copiedFromScheduleId String?        @map("copied_from_schedule_id") @db.Uuid
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz(6)
 
-  schedules      Schedule[]
-  unavailability TeacherUnavailability[]
+  classroom Classroom @relation(fields: [classroomId], references: [id])
+  copiedFrom Schedule? @relation("CopiedSchedule", fields: [copiedFromScheduleId], references: [id])
+  copies     Schedule[] @relation("CopiedSchedule")
+  entries    ScheduleEntry[]
 
-  @@map("time_slots")
+  @@unique([classroomId, academicYear, semester])
+  @@map("schedules")
 }
 
-/// One schedule entry = one class–subject–teacher–room–timeslot–day combination.
-model Schedule {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  classroomId      String         @map("classroom_id")       @db.Uuid
-  subjectId        String         @map("subject_id")         @db.Uuid
-  teacherProfileId String?        @map("teacher_profile_id") @db.Uuid
-  roomId           String?        @map("room_id")            @db.Uuid
-  timeSlotId       String         @map("time_slot_id")       @db.Uuid
-  dayOfWeek        DayOfWeek      @map("day_of_week")
-  academicYear     String         @map("academic_year")
-  semester         Int            @db.SmallInt
-  status           ScheduleStatus @default(draft)
+model ScheduleEntry {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scheduleId       String   @map("schedule_id") @db.Uuid
+  subjectId        String   @map("subject_id") @db.Uuid
+  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
+  roomId           String   @map("room_id") @db.Uuid
+  dayOfWeek        Int?     @map("day_of_week") @db.SmallInt
+  periodRowId      String?  @map("period_row_id") @db.Uuid
   notes            String?
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?                      @map("deleted_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  classroom Classroom       @relation(fields: [classroomId],      references: [id])
-  subject   Subject         @relation(fields: [subjectId],        references: [id])
-  teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
-  room      Room?           @relation(fields: [roomId],           references: [id])
-  timeSlot  TimeSlot        @relation(fields: [timeSlotId],       references: [id])
+  schedule  Schedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  subject   Subject        @relation(fields: [subjectId], references: [id])
+  teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+  room      Room           @relation(fields: [roomId], references: [id])
+  periodRow PeriodRow?     @relation(fields: [periodRowId], references: [id])
 
-  @@map("schedules")
+  @@index([teacherProfileId, dayOfWeek, periodRowId])
+  @@index([roomId, dayOfWeek, periodRowId])
+  @@map("schedule_entries")
 }
 
 // ============================================================================
@@ -577,14 +624,14 @@ model ScheduleRequirement {
 model TeacherUnavailability {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   teacherProfileId String    @map("teacher_profile_id") @db.Uuid
-  dayOfWeek        DayOfWeek @map("day_of_week")
-  timeSlotId       String    @map("time_slot_id") @db.Uuid
+  dayOfWeek        Int       @map("day_of_week") @db.SmallInt
+  periodRowId      String    @map("period_row_id") @db.Uuid
   reason           String?
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   teacher  TeacherProfile @relation(fields: [teacherProfileId], references: [id])
-  timeSlot TimeSlot       @relation(fields: [timeSlotId],       references: [id])
+  periodRow PeriodRow     @relation(fields: [periodRowId], references: [id])
 
-  @@unique([teacherProfileId, dayOfWeek, timeSlotId])
+  @@unique([teacherProfileId, dayOfWeek, periodRowId])
   @@map("teacher_unavailability")
 }

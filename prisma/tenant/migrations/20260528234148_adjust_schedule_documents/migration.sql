@@ -1,0 +1,5 @@
+-- RenameIndex
+ALTER INDEX "schedule_entries_teacher_profile_id_day_of_week_period_row_id_i" RENAME TO "schedule_entries_teacher_profile_id_day_of_week_period_row__idx";
+
+-- RenameIndex
+ALTER INDEX "teacher_unavailability_teacher_profile_id_day_of_week_period_ro" RENAME TO "teacher_unavailability_teacher_profile_id_day_of_week_perio_key";

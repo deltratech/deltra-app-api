@@ -20,7 +20,7 @@ export class TeacherUnavailabilityController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Mark a time slot as unavailable for a teacher' })
+  @ApiOperation({ summary: 'Mark a period row as unavailable for a teacher' })
   create(@Body() dto: CreateUnavailabilityDto) {
     return this.service.create(dto);
   }

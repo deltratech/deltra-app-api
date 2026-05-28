@@ -19,7 +19,6 @@ import { TeacherProfilesModule } from './teacher-profiles/teacher-profiles.modul
 import { StudentPortfoliosModule } from './student-portfolios/student-portfolios.module';
 import { StudentAchievementsModule } from './student-achievements/student-achievements.module';
 import { RoomsModule } from './rooms/rooms.module';
-import { TimeSlotsModule } from './time-slots/time-slots.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { ScheduleRequirementsModule } from './schedule-requirements/schedule-requirements.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
@@ -45,7 +44,6 @@ import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assig
     StudentPortfoliosModule,
     StudentAchievementsModule,
     RoomsModule,
-    TimeSlotsModule,
     SchedulesModule,
     ScheduleRequirementsModule,
     TeacherUnavailabilityModule,

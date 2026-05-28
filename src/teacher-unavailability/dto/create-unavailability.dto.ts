@@ -1,19 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
-import { DayOfWeek } from '../../common/enums/day-of-week.enum';
+import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class CreateUnavailabilityDto {
   @ApiProperty()
   @IsUUID()
   teacherProfileId: string;
 
-  @ApiProperty({ enum: DayOfWeek })
-  @IsEnum(DayOfWeek)
-  dayOfWeek: DayOfWeek;
+  @ApiProperty({ example: 1, description: 'ISO weekday, 1 = Monday, 5 = Friday' })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  dayOfWeek: number;
 
-  @ApiProperty({ description: 'Time slot ID that teacher cannot teach' })
+  @ApiProperty({ description: 'Period row ID that teacher cannot teach' })
   @IsUUID()
-  timeSlotId: string;
+  periodRowId: string;
 
   @ApiPropertyOptional({ example: 'Personal appointment' })
   @IsOptional()
