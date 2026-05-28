@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -36,6 +37,11 @@ export class CreateTeacherContractDto {
   @IsEnum(TeacherContractTemplateType)
   templateType?: TeacherContractTemplateType;
 
+  @ApiPropertyOptional({ description: 'Template ID to use for DOCX generation' })
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
   @ApiProperty({ example: '2026-07-01' })
   @IsDateString()
   contractStartDate: string;
@@ -43,6 +49,14 @@ export class CreateTeacherContractDto {
   @ApiProperty({ example: '2027-06-30' })
   @IsDateString()
   contractEndDate: string;
+
+  @ApiPropertyOptional({
+    enum: TeacherContractStatus,
+    description: 'Initial contract status. Defaults to draft when omitted.',
+  })
+  @IsOptional()
+  @IsEnum(TeacherContractStatus)
+  status?: TeacherContractStatus;
 
   @ApiPropertyOptional({ example: 'Guru Matematika' })
   @IsOptional()
@@ -67,11 +81,6 @@ export class CreateTeacherContractDto {
   @IsString()
   teachingAssignmentNotes?: string;
 
-  @ApiPropertyOptional({ example: '2026-06-15' })
-  @IsOptional()
-  @IsDateString()
-  signedAt?: string;
-
   @ApiPropertyOptional({ description: 'Base64 text of e-signature image/string' })
   @IsOptional()
   @IsString()
@@ -86,4 +95,14 @@ export class CreateTeacherContractDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: '2027-05-30T09:00:00.000Z', description: 'Custom reminder datetime. If omitted, defaults to contractEndDate - 30 days.' })
+  @IsOptional()
+  @IsDateString()
+  renewalReminderAt?: string;
+
+  @ApiPropertyOptional({ description: 'Custom variable key-value map required by template' })
+  @IsOptional()
+  @IsObject()
+  variables?: Record<string, string | number>;
 }

@@ -92,6 +92,18 @@ services:
     networks:
       - deltra-network
 
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: deltra-gotenberg
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-port=3000
+    ports:
+      - "3001:3000"
+    networks:
+      - deltra-network
+
 volumes:
   postgres_data:
   redis_data:

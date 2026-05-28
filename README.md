@@ -96,3 +96,12 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+
+## Schema Migration
+
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=tenant_sma_test_002" \
+npx prisma migrate dev --name migrate_name --schema=prisma/tenant/schema.prisma
+
+
+npx prisma generate --schema=prisma/tenant/schema.prisma

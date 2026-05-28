@@ -266,21 +266,17 @@ model TeacherContract {
   status                    TeacherContractStatus       @default(draft)
   contractStartDate         DateTime                    @map("contract_start_date") @db.Date
   contractEndDate           DateTime                    @map("contract_end_date") @db.Date
-  roleTitle                 String?                     @map("role_title")
   employmentStatus          EmploymentStatus?           @map("employment_status")
-  teachingHoursPerWeek      Int?                        @map("teaching_hours_per_week") @db.SmallInt
   teachingAssignmentNotes   String?                     @map("teaching_assignment_notes")
   documentTitle             String?                     @map("document_title")
   fileUrl                   String                      @map("file_url")
   fileName                  String                      @map("file_name")
   mimeType                  String                      @map("mime_type")
   sizeBytes                 Int                         @map("size_bytes")
-  signedAt                  DateTime?                   @map("signed_at") @db.Date
+  signedAt                  DateTime?                   @map("signed_at") @db.Timestamptz(6)
   eSignature                String?                     @map("e_signature")
   notes                     String?
-  variablesJson             Json?                       @map("variables_json") @db.JsonB
   renderedContent           String?                     @map("rendered_content")
-  pdfUrl                    String?                     @map("pdf_url")
   renewalReminderAt         DateTime?                   @map("renewal_reminder_at") @db.Timestamptz(6)
   createdByUserId           String?                     @map("created_by_user_id") @db.Uuid
   updatedByUserId           String?                     @map("updated_by_user_id") @db.Uuid
@@ -300,10 +296,9 @@ model TeacherContract {
 
 model TeacherContractTemplate {
   id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code         String                      @unique
   name         String
   templateType TeacherContractTemplateType @map("template_type")
-  body         String?
+  variablesJson Json?                      @map("variables_json") @db.JsonB
   templateFileUrl String?                   @map("template_file_url")
   templateFileName String?                  @map("template_file_name")
   templateMimeType String?                  @map("template_mime_type")

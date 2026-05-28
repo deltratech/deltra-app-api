@@ -1,11 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
 import { CreateTeacherContractDto, TeacherContractStatus, TeacherContractTemplateType } from './dto/create-teacher-contract.dto';
+import { CreateUploadedTeacherContractDto } from './dto/create-uploaded-teacher-contract.dto';
 import { PreviewTeacherContractDto } from './dto/preview-teacher-contract.dto';
 import { UpdateContractTemplateDto } from './dto/update-contract-template.dto';
+import { UpdateTeacherContractReminderDto } from './dto/update-teacher-contract-reminder.dto';
 import { UpdateTeacherContractDto } from './dto/update-teacher-contract.dto';
 import { TeacherContractsService } from './teacher-contracts.service';
 
@@ -22,15 +24,13 @@ export class TeacherContractsController {
     schema: {
       type: 'object',
       properties: {
-        code: { type: 'string' },
         name: { type: 'string' },
         templateType: { type: 'string', enum: ['guru_tetap', 'guru_honorer', 'staff'] },
-        body: { type: 'string' },
         version: { type: 'number' },
         isActive: { type: 'boolean' },
         file: { type: 'string', format: 'binary' },
       },
-      required: ['code', 'name', 'templateType', 'file'],
+      required: ['name', 'templateType', 'file'],
     },
   })
   @ApiOperation({ summary: 'Create teacher/staff contract template' })
@@ -54,6 +54,12 @@ export class TeacherContractsController {
     });
   }
 
+  @Get('templates/:id')
+  @ApiOperation({ summary: 'Get contract template detail including extracted variables' })
+  findTemplateOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.teacherContractsService.findTemplateOne(id);
+  }
+
   @Patch('templates/:id')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
@@ -63,7 +69,6 @@ export class TeacherContractsController {
       properties: {
         name: { type: 'string' },
         templateType: { type: 'string', enum: ['guru_tetap', 'guru_honorer', 'staff'] },
-        body: { type: 'string' },
         version: { type: 'number' },
         isActive: { type: 'boolean' },
         file: { type: 'string', format: 'binary' },
@@ -80,6 +85,12 @@ export class TeacherContractsController {
     return this.teacherContractsService.updateTemplate(id, dto, file);
   }
 
+  @Delete('templates/:id')
+  @ApiOperation({ summary: 'Soft-delete contract template' })
+  removeTemplate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.teacherContractsService.removeTemplate(id);
+  }
+
   @Post('preview')
   @ApiOperation({ summary: 'Preview generated contract before finalization' })
   preview(@Body() dto: PreviewTeacherContractDto) {
@@ -93,6 +104,38 @@ export class TeacherContractsController {
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
     return this.teacherContractsService.create(dto, user);
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        teacherProfileId: { type: 'string', format: 'uuid' },
+        templateType: { type: 'string', enum: ['guru_tetap', 'guru_honorer', 'staff'] },
+        contractStartDate: { type: 'string', format: 'date' },
+        contractEndDate: { type: 'string', format: 'date' },
+        employmentStatus: { type: 'string', enum: ['pns', 'p3k', 'tetap', 'honorer'] },
+        documentTitle: { type: 'string' },
+        eSignature: { type: 'string' },
+        signedAt: { type: 'string', format: 'date' },
+        notes: { type: 'string' },
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['teacherProfileId', 'contractStartDate', 'contractEndDate', 'file'],
+    },
+  })
+  @ApiOperation({ summary: 'Create teacher contract by direct file upload (without template)' })
+  createByUpload(
+    @Body() dto: CreateUploadedTeacherContractDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
+  ) {
+    if (!file) throw new BadRequestException('No contract file uploaded');
+    this.validateContractUploadFile(file);
+    return this.teacherContractsService.createByUpload(dto, file, user);
   }
 
   @Get()
@@ -147,16 +190,6 @@ export class TeacherContractsController {
     return this.teacherContractsService.update(id, dto, user);
   }
 
-  @Patch(':id/pdf')
-  @ApiOperation({ summary: 'Attach generated PDF URL for contract' })
-  setPdf(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { pdfUrl: string },
-    @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
-  ) {
-    return this.teacherContractsService.setPdfUrl(id, body.pdfUrl, user);
-  }
-
   @Patch(':id/publish')
   @ApiOperation({ summary: 'Publish contract and send to pending signature' })
   publish(
@@ -176,6 +209,16 @@ export class TeacherContractsController {
     return this.teacherContractsService.approve(id, body.eSignature, user);
   }
 
+  @Patch(':id/reminder')
+  @ApiOperation({ summary: 'Create or edit renewal reminder for a contract' })
+  updateReminder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTeacherContractReminderDto,
+    @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
+  ) {
+    return this.teacherContractsService.updateReminder(id, dto, user);
+  }
+
   private validateDocxTemplateFile(file: Express.Multer.File) {
     const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     if (file.mimetype !== mime) {
@@ -183,6 +226,19 @@ export class TeacherContractsController {
     }
     if (file.size > 10 * 1024 * 1024) {
       throw new BadRequestException('Template file must be under 10 MB');
+    }
+  }
+
+  private validateContractUploadFile(file: Express.Multer.File) {
+    const allowedMimes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (!allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException('Only PDF or DOCX contract files are accepted');
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      throw new BadRequestException('Contract file must be under 15 MB');
     }
   }
 }

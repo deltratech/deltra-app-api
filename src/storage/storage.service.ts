@@ -71,9 +71,13 @@ export class StorageService implements OnModuleInit {
     mimetype: string,
     folder: string,
     tenantSlug: string,
+    objectName?: string,
   ): Promise<string> {
     const ext = extname(originalName).toLowerCase() || '.bin';
-    const key = `${tenantSlug}/${folder}/${randomUUID()}${ext}`;
+    const safeObjectName = objectName
+      ? objectName.replace(/[^a-zA-Z0-9._-]+/g, '-')
+      : `${randomUUID()}${ext}`;
+    const key = `${tenantSlug}/${folder}/${safeObjectName}`;
 
     await this.client.send(
       new PutObjectCommand({
