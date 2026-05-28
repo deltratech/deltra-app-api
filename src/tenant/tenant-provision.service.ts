@@ -15,6 +15,7 @@ export interface MigrationResult {
   slug: string;
   schema: string;
   status: 'ok' | 'failed';
+  skipped?: boolean;
   error?: string;
 }
 
@@ -58,10 +59,19 @@ export class TenantProvisionService {
   async migrateOne(slug: string): Promise<void> {
     const schema = toSchemaName(slug);
 
+    await this.ensureDatabasePrerequisites();
+
+    const schemaExists = await this.schemaExists(schema);
+    if (!schemaExists) {
+      this.logger.warn(`"${schema}" does not exist — creating it before migration`);
+      await this.prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
+    }
+
     // Schemas created with `db push` have no _prisma_migrations table.
-    // Baseline the init migration so migrate deploy only applies newer ones.
+    // Baseline only when tenant tables already exist; empty/new schemas should receive all migrations.
     const tracked = await this.hasPrismaMigrationsTable(schema);
-    if (!tracked) {
+    const hasTenantTables = await this.hasTenantTables(schema);
+    if (!tracked && hasTenantTables) {
       this.logger.warn(`"${schema}" has no _prisma_migrations — baselining init migration`);
       await this.baselineInitMigration(schema);
     }
@@ -77,8 +87,8 @@ export class TenantProvisionService {
 
   async migrateAll(): Promise<MigrationResult[]> {
     const tenants = await this.prisma.tenant.findMany({
-      where: { deletedAt: null },
-      select: { slug: true },
+      where: { deletedAt: null, type: 'school' },
+      select: { slug: true, type: true },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -107,12 +117,38 @@ export class TenantProvisionService {
     return url.toString();
   }
 
+  private async ensureDatabasePrerequisites(): Promise<void> {
+    await this.prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+    await this.prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS citext`);
+  }
+
+  private async schemaExists(schema: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.schemata
+        WHERE schema_name = ${schema}
+      ) AS exists
+    `;
+    return rows[0]?.exists ?? false;
+  }
+
   private async hasPrismaMigrationsTable(schema: string): Promise<boolean> {
     const rows = await this.prisma.$queryRaw<{ exists: boolean }[]>`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_schema = ${schema}
           AND table_name   = '_prisma_migrations'
+      ) AS exists
+    `;
+    return rows[0]?.exists ?? false;
+  }
+
+  private async hasTenantTables(schema: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = ${schema}
+          AND table_name IN ('users', 'classrooms', 'teacher_profiles')
       ) AS exists
     `;
     return rows[0]?.exists ?? false;
