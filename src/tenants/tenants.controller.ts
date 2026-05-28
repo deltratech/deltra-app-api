@@ -28,15 +28,6 @@ import { ValidateTenantSlugDto } from './dto/validate-tenant-slug.dto';
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
-  // ── Public ──────────────────────────────────────────────────────────────────
-
-  @Public()
-  @Post('register')
-  @ApiOperation({ summary: 'Register a new tenant (public — no API key required)' })
-  register(@Body() dto: RegisterTenantDto) {
-    return this.tenantsService.register(dto);
-  }
-
   @Public()
   @Get('validate-slug')
   @ApiOperation({ summary: 'Validate whether a tenant slug is available' })

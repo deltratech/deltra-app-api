@@ -3,4 +3,7 @@ export interface JwtPayload {
   tenantId?: string;
   tenantSlug?: string;
   isSuperAdmin?: boolean;
+  isPlatformUser?: boolean;
+  role?: string;
+  networkId?: string;
 }

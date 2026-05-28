@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -61,15 +62,18 @@ export class TenantsService {
     });
     if (exists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
 
+    await this.validateTenantHierarchy(dto.type, dto.parentId);
+
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.name,
         slug: dto.slug,
         type: dto.type,
-        plan: dto.plan,
         parentId: dto.parentId,
       },
     });
+
+    if (tenant.type === 'network') return tenant;
 
     try {
       await this.provision.provision(tenant.slug);
@@ -85,7 +89,8 @@ export class TenantsService {
   }
 
   async update(id: string, dto: UpdateTenantDto) {
-    await this.findOne(id);
+    const tenant = await this.findOne(id);
+    await this.validateTenantHierarchy(dto.type ?? tenant.type, dto.parentId);
     return this.prisma.tenant.update({
       where: { id },
       data: dto,
@@ -97,6 +102,9 @@ export class TenantsService {
       where: { slug: dto.slug },
     });
     if (slugExists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
+    if (dto.type !== 'school') {
+      throw new BadRequestException('Public tenant registration only supports independent schools');
+    }
 
     // 1. Create tenant record in public schema
     const tenant = await this.prisma.tenant.create({
@@ -189,6 +197,22 @@ export class TenantsService {
   async deleteSettings(tenantId: string) {
     await this.getSettings(tenantId);
     return this.prisma.tenantSettings.delete({ where: { tenantId } });
+  }
+
+  private async validateTenantHierarchy(type: 'school' | 'network', parentId?: string | null) {
+    if (type === 'network' && parentId) {
+      throw new BadRequestException('Foundation/network tenants cannot have a parent foundation');
+    }
+
+    if (type === 'school' && parentId) {
+      const parent = await this.prisma.tenant.findFirst({
+        where: { id: parentId, type: 'network', deletedAt: null },
+        select: { id: true },
+      });
+      if (!parent) {
+        throw new BadRequestException('parentId must reference an existing foundation/network tenant');
+      }
+    }
   }
 
   // ── Migration management ─────────────────────────────────────────────────────

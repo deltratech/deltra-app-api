@@ -65,20 +65,30 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const isSuperAdmin = user.role === 'superadmin';
-    const accessToken = this.signSuperAdminToken(user.id, isSuperAdmin);
-    const refreshToken = await this.generateRefreshToken(user.id, undefined, undefined, isSuperAdmin);
+    const platformUser = user as typeof user & { networkId?: string | null };
+    const isSuperAdmin = platformUser.role === 'superadmin';
+    const accessToken = this.signPlatformToken(platformUser.id, platformUser.role, platformUser.networkId, isSuperAdmin);
+    const refreshToken = await this.generateRefreshToken(
+      platformUser.id,
+      undefined,
+      undefined,
+      isSuperAdmin,
+      true,
+      platformUser.role,
+      platformUser.networkId,
+    );
 
     return {
       accessToken,
       refreshToken,
       user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        fullName: user.fullName,
-        role: user.role,
-        status: user.status,
+        id: platformUser.id,
+        email: platformUser.email,
+        username: platformUser.username,
+        fullName: platformUser.fullName,
+        role: platformUser.role,
+        networkId: platformUser.networkId,
+        status: platformUser.status,
       },
     };
   }
@@ -88,7 +98,7 @@ export class AuthService {
       where: { slug: dto.tenantSlug, deletedAt: null },
     });
     if (!tenant) throw new NotFoundException(`Tenant '${dto.tenantSlug}' not found`);
-    if (tenant.status === 'suspended')
+    if ((tenant as typeof tenant & { status?: string }).status === 'suspended')
       throw new UnauthorizedException(`Tenant '${dto.tenantSlug}' is suspended`);
 
     const db = this.tenantPrisma.forSchema(toSchemaName(dto.tenantSlug));
@@ -141,8 +151,8 @@ export class AuthService {
 
     await this.redis.deleteRefreshToken(refreshToken);
 
-    const newAccessToken = payload.isSuperAdmin
-      ? this.signSuperAdminToken(payload.userId, payload.isSuperAdmin)
+    const newAccessToken = payload.isPlatformUser
+      ? this.signPlatformToken(payload.userId, payload.role, payload.networkId, payload.isSuperAdmin)
       : this.signToken(payload.userId, payload.tenantId!, payload.tenantSlug!);
 
     const newRefreshToken = await this.generateRefreshToken(
@@ -150,6 +160,9 @@ export class AuthService {
       payload.tenantId,
       payload.tenantSlug,
       payload.isSuperAdmin,
+      payload.isPlatformUser,
+      payload.role,
+      payload.networkId,
     );
 
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -203,11 +216,21 @@ export class AuthService {
     };
   }
 
-  async me(userId: string, tenantSlug: string | undefined, isSuperAdmin: boolean) {
-    if (isSuperAdmin) {
-      const user = await this.prisma.platformUser.findFirst({
+  async me(userId: string, tenantSlug: string | undefined, isPlatformUser: boolean) {
+    if (isPlatformUser) {
+      const user = await (this.prisma.platformUser as any).findFirst({
         where: { id: userId, status: 'active', deletedAt: null },
-        select: { id: true, email: true, username: true, fullName: true, role: true, status: true, lastLoginAt: true, createdAt: true },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          fullName: true,
+          role: true,
+          networkId: true,
+          status: true,
+          lastLoginAt: true,
+          createdAt: true,
+        },
       });
       if (!user) throw new NotFoundException('User not found');
       return user;
@@ -274,8 +297,9 @@ export class AuthService {
     return this.jwt.sign(payload);
   }
 
-  private signSuperAdminToken(userId: string, isSuperAdmin: boolean): string {
-    const payload: JwtPayload = { sub: userId, isSuperAdmin };
+  private signPlatformToken(userId: string, role?: string, networkId?: string | null, isSuperAdmin = false): string {
+    const payload: JwtPayload = { sub: userId, isSuperAdmin, isPlatformUser: true, role };
+    if (networkId) payload.networkId = networkId;
     return this.jwt.sign(payload);
   }
 
@@ -284,9 +308,12 @@ export class AuthService {
     tenantId?: string,
     tenantSlug?: string,
     isSuperAdmin?: boolean,
+    isPlatformUser?: boolean,
+    role?: string,
+    networkId?: string | null,
   ): Promise<string> {
     const token = randomBytes(40).toString('hex');
-    await this.redis.saveRefreshToken(token, { userId, tenantId, tenantSlug, isSuperAdmin });
+    await this.redis.saveRefreshToken(token, { userId, tenantId, tenantSlug, isSuperAdmin, isPlatformUser, role, networkId: networkId ?? undefined });
     return token;
   }
 }

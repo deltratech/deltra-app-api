@@ -7,7 +7,7 @@ import {
   IsUUID,
   Matches,
 } from 'class-validator';
-import { TenantPlan, TenantType } from '@prisma/client';
+import { TenantType } from '@prisma/client';
 
 export class CreateTenantDto {
   @ApiProperty({ example: 'SMA Pelita Bangsa' })
@@ -23,11 +23,6 @@ export class CreateTenantDto {
   @ApiProperty({ enum: TenantType })
   @IsEnum(TenantType)
   type: TenantType;
-
-  @ApiPropertyOptional({ enum: TenantPlan, default: TenantPlan.starter })
-  @IsOptional()
-  @IsEnum(TenantPlan)
-  plan?: TenantPlan;
 
   @ApiPropertyOptional({ description: 'Parent tenant ID (for school networks)' })
   @IsOptional()

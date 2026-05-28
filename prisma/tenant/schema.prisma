@@ -23,6 +23,7 @@ datasource db {
 
 enum UserRole {
   school_admin
+  network_admin
   principal
   finance
   teacher
@@ -254,6 +255,7 @@ model TeacherProfile {
   requirements  ScheduleRequirement[]
   unavailability TeacherUnavailability[]
   contracts     TeacherContract[]
+  homeroomAssignments HomeroomAssignment[]
 
   @@map("teacher_profiles")
 }
@@ -335,9 +337,32 @@ model Classroom {
   classSubjects ClassSubject[]
   schedules     Schedule[]
   requirements  ScheduleRequirement[]
+  homeroomAssignments HomeroomAssignment[]
 
   @@unique([name, academicYear, semester])
   @@map("classrooms")
+}
+
+model HomeroomAssignment {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId      String    @map("classroom_id") @db.Uuid
+  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
+  academicYear     String    @map("academic_year")
+  semester         Int       @db.SmallInt
+  isActive         Boolean   @default(true) @map("is_active")
+  assignedAt       DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(6)
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  classroom Classroom      @relation(fields: [classroomId], references: [id])
+  teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+
+  @@index([teacherProfileId, isActive])
+  @@index([classroomId, academicYear, semester])
+  @@map("homeroom_assignments")
 }
 
 /// Mata pelajaran milik sekolah ini.

@@ -16,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   validate(payload: JwtPayload) {
     if (!payload.sub) throw new UnauthorizedException('Invalid token');
-    if (!payload.isSuperAdmin && !payload.tenantSlug) {
+    if (!payload.isPlatformUser && !payload.isSuperAdmin && !payload.tenantSlug) {
       throw new UnauthorizedException('Invalid token');
     }
     return {
@@ -24,6 +24,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: payload.tenantId,
       tenantSlug: payload.tenantSlug,
       isSuperAdmin: payload.isSuperAdmin ?? false,
+      isPlatformUser: payload.isPlatformUser ?? false,
+      role: payload.role,
+      networkId: payload.networkId,
     };
   }
 }
