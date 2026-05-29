@@ -19,10 +19,10 @@ import { TeacherProfilesModule } from './teacher-profiles/teacher-profiles.modul
 import { StudentPortfoliosModule } from './student-portfolios/student-portfolios.module';
 import { StudentAchievementsModule } from './student-achievements/student-achievements.module';
 import { RoomsModule } from './rooms/rooms.module';
+import { ClassroomsModule } from './classrooms/classrooms.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { ScheduleRequirementsModule } from './schedule-requirements/schedule-requirements.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
-import { AutoSchedulingModule } from './auto-scheduling/auto-scheduling.module';
 import { TeacherContractsModule } from './teacher-contracts/teacher-contracts.module';
 import { NetworksModule } from './networks/networks.module';
 import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assignments.module';
@@ -43,11 +43,11 @@ import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assig
     TeacherProfilesModule,
     StudentPortfoliosModule,
     StudentAchievementsModule,
+    ClassroomsModule,
     RoomsModule,
     SchedulesModule,
     ScheduleRequirementsModule,
     TeacherUnavailabilityModule,
-    AutoSchedulingModule,
     TeacherContractsModule,
     NetworksModule,
     HomeroomAssignmentsModule,

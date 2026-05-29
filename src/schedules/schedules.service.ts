@@ -31,6 +31,10 @@ const SCHEDULE_INCLUDE = {
 export class SchedulesService {
   constructor(private readonly tenantPrisma: PrismaTenantService) {}
 
+  private isUniqueConstraintError(error: unknown): error is { code: string } {
+    return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'P2002';
+  }
+
   async findAll(filters: {
     classroomId?: string;
     academicYear?: string;
@@ -241,11 +245,20 @@ export class SchedulesService {
   }
 
   async createPeriodTemplate(dto: CreatePeriodTemplateDto) {
-    const template = await this.tenantPrisma.client.periodTemplate.create({
-      data: dto,
-      include: { rows: { orderBy: { sortOrder: 'asc' } } },
-    });
-    return this.withDerivedPeriodTimes(template);
+    try {
+      const template = await this.tenantPrisma.client.periodTemplate.create({
+        data: dto,
+        include: { rows: { orderBy: { sortOrder: 'asc' } } },
+      });
+      return this.withDerivedPeriodTimes(template);
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          `Period template for grade ${dto.gradeLevel} and academic year '${dto.academicYear}' already exists`,
+        );
+      }
+      throw error;
+    }
   }
 
   async updatePeriodTemplate(id: string, dto: UpdatePeriodTemplateDto) {
@@ -259,10 +272,19 @@ export class SchedulesService {
 
   async addPeriodRow(templateId: string, dto: CreatePeriodRowDto) {
     await this.tenantPrisma.client.periodTemplate.findUniqueOrThrow({ where: { id: templateId } });
-    const row = await this.tenantPrisma.client.periodRow.create({
-      data: { templateId, ...dto, activeDays: dto.activeDays ?? [] },
-    });
-    return row;
+    try {
+      const row = await this.tenantPrisma.client.periodRow.create({
+        data: { templateId, ...dto, activeDays: dto.activeDays ?? [] },
+      });
+      return row;
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          `Period row sortOrder ${dto.sortOrder} already exists for this template`,
+        );
+      }
+      throw error;
+    }
   }
 
   async updatePeriodRow(id: string, dto: UpdatePeriodRowDto) {

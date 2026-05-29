@@ -43,6 +43,12 @@ async function upsertUser(
   });
 }
 
+function toTime(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -58,7 +64,14 @@ async function main() {
     update: {},
   });
 
+  const classroom2 = await prisma.classroom.upsert({
+    where: { name_academicYear_semester: { name: 'X IPA 2', academicYear: '2025/2026', semester: 1 } },
+    create: { name: 'X IPA 2', gradeLevel: 10, academicYear: '2025/2026', semester: 1 },
+    update: {},
+  });
+
   log(`  classroom: ${classroom.name}`);
+  log(`  classroom: ${classroom2.name}`);
 
   // ── 2. Subjects ──────────────────────────────────────────────────────────────
 
@@ -78,6 +91,24 @@ async function main() {
     const subject  = existing ?? await prisma.subject.create({ data: s });
     subjects[s.code] = subject;
     log(`  subject: ${subject.name}`);
+  }
+
+  // ── 2b. Rooms ───────────────────────────────────────────────────────────────
+
+  log('Upserting rooms...');
+
+  const roomData = [
+    { name: 'Ruang A101', capacity: 36, description: 'Ruang kelas utama X IPA 1' },
+    { name: 'Ruang A102', capacity: 36, description: 'Ruang kelas utama X IPA 2' },
+    { name: 'Lab Fisika', capacity: 24, description: 'Laboratorium fisika' },
+  ];
+
+  const rooms: Record<string, { id: string; name: string }> = {};
+  for (const r of roomData) {
+    const existing = await prisma.room.findFirst({ where: { name: r.name, deletedAt: null } });
+    const room = existing ?? await prisma.room.create({ data: r });
+    rooms[r.name] = room;
+    log(`  room: ${room.name}`);
   }
 
   // ── 3. Teachers ──────────────────────────────────────────────────────────────
@@ -160,6 +191,29 @@ async function main() {
 
     teacherProfiles.push(profile);
     log(`  teacher: ${t.fullName} (${t.subjectCode})`);
+  }
+
+  // ── 3b. Homeroom assignment ────────────────────────────────────────────────
+
+  log('Upserting homeroom assignment...');
+
+  const activeHomeroom = await prisma.homeroomAssignment.findFirst({
+    where: { classroomId: classroom.id, isActive: true, deletedAt: null },
+  });
+  if (!activeHomeroom) {
+    await prisma.homeroomAssignment.create({
+      data: {
+        classroomId: classroom.id,
+        teacherProfileId: teacherProfiles[0].id,
+        academicYear: '2025/2026',
+        semester: 1,
+        notes: 'Wali kelas dummy seed',
+      },
+    });
+    await prisma.classroom.update({
+      where: { id: classroom.id },
+      data: { homeroomUserId: teacherProfiles[0].userId },
+    });
   }
 
   // ── 4. Students ──────────────────────────────────────────────────────────────
@@ -499,6 +553,287 @@ async function main() {
     }
   }
 
+  // ── 7. Period templates & rows ─────────────────────────────────────────────
+
+  log('Upserting period templates...');
+
+  const periodTemplate = await prisma.periodTemplate.upsert({
+    where: {
+      gradeLevel_academicYear: {
+        gradeLevel: 10,
+        academicYear: '2025/2026',
+      },
+    },
+    create: {
+      gradeLevel: 10,
+      academicYear: '2025/2026',
+      dayStart: '07:00',
+    },
+    update: {
+      dayStart: '07:00',
+    },
+  });
+
+  const periodRowsSeed = [
+    { sortOrder: 1, kind: 'lesson', label: 'Period 1', durationMin: 45, activeDays: [] as number[] },
+    { sortOrder: 2, kind: 'lesson', label: 'Period 2', durationMin: 45, activeDays: [] as number[] },
+    { sortOrder: 3, kind: 'break', label: 'Morning Break', durationMin: 15, activeDays: [1, 2, 3, 4, 5] },
+    { sortOrder: 4, kind: 'lesson', label: 'Period 3', durationMin: 45, activeDays: [] as number[] },
+    { sortOrder: 5, kind: 'lesson', label: 'Period 4', durationMin: 45, activeDays: [] as number[] },
+  ];
+
+  const periodRows: Array<{ id: string; sortOrder: number; label: string }> = [];
+  for (const row of periodRowsSeed) {
+    const periodRow = await prisma.periodRow.upsert({
+      where: {
+        templateId_sortOrder: {
+          templateId: periodTemplate.id,
+          sortOrder: row.sortOrder,
+        },
+      },
+      create: {
+        templateId: periodTemplate.id,
+        sortOrder: row.sortOrder,
+        kind: row.kind as any,
+        label: row.label,
+        durationMin: row.durationMin,
+        activeDays: row.activeDays,
+      },
+      update: {
+        kind: row.kind as any,
+        label: row.label,
+        durationMin: row.durationMin,
+        activeDays: row.activeDays,
+      },
+      select: { id: true, sortOrder: true, label: true },
+    });
+    periodRows.push(periodRow);
+    log(`  period row: ${periodRow.label}`);
+  }
+
+  let cursor = 7 * 60;
+  for (const row of periodRowsSeed) {
+    log(`    ${row.label}: ${toTime(cursor)} - ${toTime(cursor + row.durationMin)}`);
+    cursor += row.durationMin;
+  }
+
+  // ── 8. Schedule requirements ───────────────────────────────────────────────
+
+  log('Upserting schedule requirements...');
+
+  const requirementSeed = [
+    {
+      classroomId: classroom.id,
+      subjectCode: 'MTK',
+      teacherProfileId: teacherProfiles[0].id,
+      roomId: rooms['Ruang A101'].id,
+      sessionsPerWeek: 4,
+    },
+    {
+      classroomId: classroom.id,
+      subjectCode: 'BIN',
+      teacherProfileId: teacherProfiles[1].id,
+      roomId: rooms['Ruang A101'].id,
+      sessionsPerWeek: 3,
+    },
+    {
+      classroomId: classroom.id,
+      subjectCode: 'FIS',
+      teacherProfileId: teacherProfiles[2].id,
+      roomId: rooms['Lab Fisika'].id,
+      sessionsPerWeek: 2,
+    },
+    {
+      classroomId: classroom2.id,
+      subjectCode: 'KIM',
+      teacherProfileId: teacherProfiles[3].id,
+      roomId: rooms['Ruang A102'].id,
+      sessionsPerWeek: 3,
+    },
+  ];
+
+  for (const req of requirementSeed) {
+    await prisma.scheduleRequirement.upsert({
+      where: {
+        classroomId_subjectId_academicYear_semester: {
+          classroomId: req.classroomId,
+          subjectId: subjects[req.subjectCode].id,
+          academicYear: '2025/2026',
+          semester: 1,
+        },
+      },
+      create: {
+        classroomId: req.classroomId,
+        subjectId: subjects[req.subjectCode].id,
+        teacherProfileId: req.teacherProfileId,
+        roomId: req.roomId,
+        sessionsPerWeek: req.sessionsPerWeek,
+        academicYear: '2025/2026',
+        semester: 1,
+      },
+      update: {
+        teacherProfileId: req.teacherProfileId,
+        roomId: req.roomId,
+        sessionsPerWeek: req.sessionsPerWeek,
+      },
+    });
+    log(`  requirement: ${subjects[req.subjectCode].name}`);
+  }
+
+  // ── 9. Schedule document & entries ─────────────────────────────────────────
+
+  log('Upserting schedule document and entries...');
+
+  const schedule = await prisma.schedule.upsert({
+    where: {
+      classroomId_academicYear_semester: {
+        classroomId: classroom.id,
+        academicYear: '2025/2026',
+        semester: 1,
+      },
+    },
+    create: {
+      classroomId: classroom.id,
+      academicYear: '2025/2026',
+      semester: 1,
+      status: 'draft',
+    },
+    update: {
+      deletedAt: null,
+      status: 'draft',
+      archivedAt: null,
+    },
+  });
+
+  const entrySeed = [
+    {
+      subjectCode: 'MTK',
+      teacherProfileId: teacherProfiles[0].id,
+      roomId: rooms['Ruang A101'].id,
+      dayOfWeek: 1,
+      periodSortOrder: 1,
+      notes: 'Matematika Monday Period 1',
+    },
+    {
+      subjectCode: 'BIN',
+      teacherProfileId: teacherProfiles[1].id,
+      roomId: rooms['Ruang A101'].id,
+      dayOfWeek: 1,
+      periodSortOrder: 2,
+      notes: 'Bahasa Indonesia Monday Period 2',
+    },
+    {
+      subjectCode: 'FIS',
+      teacherProfileId: teacherProfiles[2].id,
+      roomId: rooms['Lab Fisika'].id,
+      dayOfWeek: undefined,
+      periodSortOrder: undefined,
+      notes: 'Tray item for later placement',
+    },
+  ];
+
+  for (const entry of entrySeed) {
+    const periodRow = entry.periodSortOrder
+      ? periodRows.find((row) => row.sortOrder === entry.periodSortOrder)
+      : undefined;
+
+    const existing = await prisma.scheduleEntry.findFirst({
+      where: {
+        scheduleId: schedule.id,
+        subjectId: subjects[entry.subjectCode].id,
+        teacherProfileId: entry.teacherProfileId,
+        dayOfWeek: entry.dayOfWeek ?? null,
+        periodRowId: periodRow?.id ?? null,
+        deletedAt: null,
+      },
+    });
+
+    if (!existing) {
+      await prisma.scheduleEntry.create({
+        data: {
+          scheduleId: schedule.id,
+          subjectId: subjects[entry.subjectCode].id,
+          teacherProfileId: entry.teacherProfileId,
+          roomId: entry.roomId,
+          dayOfWeek: entry.dayOfWeek,
+          periodRowId: periodRow?.id,
+          notes: entry.notes,
+        },
+      });
+    }
+    log(`  schedule entry: ${subjects[entry.subjectCode].name}`);
+  }
+
+  const publishedSchedule = await prisma.schedule.upsert({
+    where: {
+      classroomId_academicYear_semester: {
+        classroomId: classroom2.id,
+        academicYear: '2025/2026',
+        semester: 1,
+      },
+    },
+    create: {
+      classroomId: classroom2.id,
+      academicYear: '2025/2026',
+      semester: 1,
+      status: 'published',
+      publishedAt: new Date(),
+    },
+    update: {
+      status: 'published',
+      publishedAt: new Date(),
+      deletedAt: null,
+      archivedAt: null,
+    },
+  });
+
+  const publishedEntry = await prisma.scheduleEntry.findFirst({
+    where: {
+      scheduleId: publishedSchedule.id,
+      subjectId: subjects.KIM.id,
+      teacherProfileId: teacherProfiles[3].id,
+      dayOfWeek: 2,
+      deletedAt: null,
+    },
+  });
+  if (!publishedEntry) {
+    await prisma.scheduleEntry.create({
+      data: {
+        scheduleId: publishedSchedule.id,
+        subjectId: subjects.KIM.id,
+        teacherProfileId: teacherProfiles[3].id,
+        roomId: rooms['Ruang A102'].id,
+        dayOfWeek: 2,
+        periodRowId: periodRows[0].id,
+        notes: 'Published seed schedule',
+      },
+    });
+  }
+
+  // ── 10. Teacher unavailability ─────────────────────────────────────────────
+
+  log('Upserting teacher unavailability...');
+
+  const unavailability = await prisma.teacherUnavailability.findUnique({
+    where: {
+      teacherProfileId_dayOfWeek_periodRowId: {
+        teacherProfileId: teacherProfiles[2].id,
+        dayOfWeek: 3,
+        periodRowId: periodRows[1].id,
+      },
+    },
+  });
+  if (!unavailability) {
+    await prisma.teacherUnavailability.create({
+      data: {
+        teacherProfileId: teacherProfiles[2].id,
+        dayOfWeek: 3,
+        periodRowId: periodRows[1].id,
+        reason: 'Dummy unavailable slot',
+      },
+    });
+  }
+
   // ── Done ─────────────────────────────────────────────────────────────────────
 
   await prisma.$disconnect();
@@ -508,6 +843,10 @@ async function main() {
   log(`  ${studentProfiles.length} students`);
   log(`  ${portfolioSeed.length} portfolios`);
   log(`  ${achievementSeed.length} achievements`);
+  log(`  periodTemplateId: ${periodTemplate.id}`);
+  log(`  scheduleId: ${schedule.id}`);
+  log(`  classroomId: ${classroom.id}`);
+  log(`  classroom2Id: ${classroom2.id}`);
 }
 
 main().catch((err) => {
