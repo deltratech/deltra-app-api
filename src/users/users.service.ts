@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -14,6 +15,7 @@ import { paginatedResult } from '../common/utils/paginate';
 const SAFE_SELECT = {
   id: true,
   email: true,
+  username: true,
   fullName: true,
   phone: true,
   avatarUrl: true,
@@ -65,10 +67,23 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
-    const exists = await this.tenantPrisma.client.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (exists) throw new ConflictException(`Email '${dto.email}' is already registered`);
+    if (!dto.email && !dto.username) {
+      throw new BadRequestException('Email or username is required');
+    }
+
+    if (dto.email) {
+      const exists = await this.tenantPrisma.client.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (exists) throw new ConflictException(`Email '${dto.email}' is already registered`);
+    }
+
+    if (dto.username) {
+      const exists = await this.tenantPrisma.client.user.findUnique({
+        where: { username: dto.username },
+      });
+      if (exists) throw new ConflictException(`Username '${dto.username}' is already taken`);
+    }
 
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, 12)
@@ -77,6 +92,7 @@ export class UsersService {
     return this.tenantPrisma.client.user.create({
       data: {
         email: dto.email,
+        username: dto.username,
         fullName: dto.fullName,
         phone: dto.phone,
         avatarUrl: dto.avatarUrl,
@@ -90,6 +106,13 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto) {
     await this.findOne(id);
 
+    if (dto.username) {
+      const conflict = await this.tenantPrisma.client.user.findFirst({
+        where: { username: dto.username, deletedAt: null, NOT: { id } },
+      });
+      if (conflict) throw new ConflictException(`Username '${dto.username}' is already taken`);
+    }
+
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, 12)
       : undefined;
@@ -98,6 +121,7 @@ export class UsersService {
       where: { id },
       data: {
         fullName: dto.fullName,
+        username: dto.username,
         phone: dto.phone,
         avatarUrl: dto.avatarUrl,
         ...(passwordHash && { passwordHash }),

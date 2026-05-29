@@ -12,9 +12,16 @@ import {
 import { UserRole } from '../../common/enums/user-role.enum';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'budi@sma-pelita.sch.id' })
+  @ApiPropertyOptional({ example: 'budi@sma-pelita.sch.id' })
+  @IsOptional()
   @IsEmail()
-  email!: string;
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'budi.santoso' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  username?: string;
 
   @ApiProperty({ example: 'Budi Santoso' })
   @IsString()
