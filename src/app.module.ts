@@ -60,6 +60,7 @@ export class AppModule implements NestModule {
     consumer
       .apply(TenantMiddleware)
       .exclude(
+        { path: '', method: RequestMethod.GET },
         { path: 'health', method: RequestMethod.GET },
         { path: 'auth/login', method: RequestMethod.POST },
         { path: 'auth/forgot-password', method: RequestMethod.POST },
