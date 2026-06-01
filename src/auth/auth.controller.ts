@@ -24,7 +24,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @ApiOperation({
-    summary: 'Issue new access token using a valid refresh token (token is rotated). Invalidates the old refresh token.',
+    summary: 'Issue new access token using a valid refresh token (token is rotated).',
   })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto.refreshToken);
