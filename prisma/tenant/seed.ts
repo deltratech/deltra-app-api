@@ -13,7 +13,7 @@ import * as bcrypt from 'bcrypt';
 // ── Connection ──────────────────────────────────────────────────────────────
 
 const schema  = process.env.SEED_SCHEMA ?? 'tenant_sma_test';
-const baseUrl = (process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/deltra')
+const baseUrl = (process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5433/deltra')
   .replace(/[?&]schema=[^&]*/g, '').replace(/[?&]$/, '');
 const dbUrl   = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}schema=${schema}`;
 

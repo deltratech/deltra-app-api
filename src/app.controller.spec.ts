@@ -15,6 +15,17 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
+    it('should return API status metadata', () => {
+      expect(appController.root()).toEqual({
+        name: 'Deltra App API',
+        status: 'ok',
+        docs: '/api/docs',
+        health: '/health',
+      });
+    });
+  });
+
+  describe('health', () => {
     it('should return health status', () => {
       expect(appController.health()).toEqual({ status: 'ok' });
     });
