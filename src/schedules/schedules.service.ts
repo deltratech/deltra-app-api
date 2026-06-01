@@ -27,6 +27,8 @@ const SCHEDULE_INCLUDE = {
   },
 };
 
+const DEFAULT_ACTIVE_DAYS = [1, 2, 3, 4, 5];
+
 @Injectable()
 export class SchedulesService {
   constructor(private readonly tenantPrisma: PrismaTenantService) {}
@@ -274,7 +276,7 @@ export class SchedulesService {
     await this.tenantPrisma.client.periodTemplate.findUniqueOrThrow({ where: { id: templateId } });
     try {
       const row = await this.tenantPrisma.client.periodRow.create({
-        data: { templateId, ...dto, activeDays: dto.activeDays ?? [] },
+        data: { templateId, ...dto, activeDays: dto.activeDays ?? DEFAULT_ACTIVE_DAYS },
       });
       return row;
     } catch (error) {

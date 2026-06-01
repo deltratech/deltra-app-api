@@ -27,7 +27,7 @@ export class CreatePeriodRowDto {
   @Min(1)
   durationMin: number;
 
-  @ApiPropertyOptional({ type: [Number], example: [1, 2, 3, 4, 5] })
+  @ApiPropertyOptional({ type: [Number], example: [1, 2, 3, 4, 5], default: [1, 2, 3, 4, 5] })
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })
