@@ -2,12 +2,16 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { PlatformUserRole } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CreateNetworkAdminDto } from './dto/create-network-admin.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateRolesDto } from './dto/update-roles.dto';
 import { paginatedResult } from '../common/utils/paginate';
@@ -26,9 +30,23 @@ const SAFE_SELECT = {
   updatedAt: true,
 };
 
+const SAFE_PLATFORM_USER_SELECT = {
+  id: true,
+  email: true,
+  username: true,
+  fullName: true,
+  role: true,
+  networkId: true,
+  status: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
 @Injectable()
 export class UsersService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: PrismaTenantService,
     private readonly storage: StorageService,
   ) {}
@@ -67,8 +85,8 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
-    if (!dto.email && !dto.username) {
-      throw new BadRequestException('Email or username is required');
+    if (!dto.email) {
+      throw new BadRequestException('Email is required');
     }
 
     if (dto.email) {
@@ -100,6 +118,48 @@ export class UsersService {
         passwordHash,
       },
       select: SAFE_SELECT,
+    });
+  }
+
+  async createNetworkAdmin(dto: CreateNetworkAdminDto, actor?: { isPlatformUser?: boolean; isSuperAdmin?: boolean }) {
+    if (!actor?.isPlatformUser || !actor.isSuperAdmin) {
+      throw new ForbiddenException('Superadmin access required');
+    }
+
+    if (!dto.email && !dto.username) {
+      throw new BadRequestException('Email or username is required');
+    }
+
+    const network = await this.prisma.tenant.findFirst({
+      where: { id: dto.networkId, type: 'network', deletedAt: null },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!network) {
+      throw new NotFoundException(`Network ${dto.networkId} not found`);
+    }
+
+    if (dto.email) {
+      const exists = await this.prisma.platformUser.findUnique({ where: { email: dto.email } });
+      if (exists) throw new ConflictException(`Email '${dto.email}' is already registered`);
+    }
+
+    if (dto.username) {
+      const exists = await this.prisma.platformUser.findUnique({ where: { username: dto.username } });
+      if (exists) throw new ConflictException(`Username '${dto.username}' is already taken`);
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    return this.prisma.platformUser.create({
+      data: {
+        email: dto.email,
+        username: dto.username,
+        fullName: dto.fullName,
+        passwordHash,
+        role: PlatformUserRole.network_admin,
+        networkId: network.id,
+      },
+      select: SAFE_PLATFORM_USER_SELECT,
     });
   }
 

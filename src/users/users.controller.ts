@@ -21,6 +21,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { UsersImportService, ImportResult } from './users.import.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CreateNetworkAdminDto } from './dto/create-network-admin.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateRolesDto } from './dto/update-roles.dto';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -59,6 +60,15 @@ export class UsersController {
   @ApiOperation({ summary: 'Create a user' })
   create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto);
+  }
+
+  @Post('network-admins')
+  @ApiOperation({ summary: 'Create a platform user with network_admin role' })
+  createNetworkAdmin(
+    @Body() dto: CreateNetworkAdminDto,
+    @CurrentUser() user: { isPlatformUser?: boolean; isSuperAdmin?: boolean },
+  ) {
+    return this.usersService.createNetworkAdmin(dto, user);
   }
 
   @Patch(':id')

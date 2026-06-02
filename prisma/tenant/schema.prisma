@@ -59,6 +59,16 @@ enum EnrollmentStatus {
   @@map("enrollment_status")
 }
 
+enum AttendanceStatus {
+  present
+  late
+  excused
+  sick
+  absent
+
+  @@map("attendance_status")
+}
+
 enum Gender {
   male
   female
@@ -183,6 +193,7 @@ model User {
 
   studentProfile StudentProfile?
   teacherProfile TeacherProfile?
+  attendanceRecords AttendanceRecord[]
 
   @@map("users")
 }
@@ -215,6 +226,7 @@ model StudentProfile {
   guardians    Guardian[]
   portfolios   StudentPortfolio[]
   achievements StudentAchievement[]
+  attendanceRecords AttendanceRecord[]
 
   @@map("student_profiles")
 }
@@ -346,6 +358,7 @@ model Classroom {
   schedules     Schedule[]
   requirements  ScheduleRequirement[]
   homeroomAssignments HomeroomAssignment[]
+  attendanceRecords AttendanceRecord[]
 
   @@unique([name, academicYear, semester])
   @@map("classrooms")
@@ -450,6 +463,28 @@ model Enrollment {
 
   @@unique([studentProfileId, classroomId])
   @@map("enrollments")
+}
+
+model AttendanceRecord {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId String           @map("student_profile_id") @db.Uuid
+  classroomId      String           @map("classroom_id") @db.Uuid
+  attendanceDate   DateTime         @map("attendance_date") @db.Date
+  status           AttendanceStatus
+  notes            String?
+  markedByUserId   String?          @map("marked_by_user_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  classroom      Classroom      @relation(fields: [classroomId], references: [id])
+  markedBy       User?          @relation(fields: [markedByUserId], references: [id])
+
+  @@unique([studentProfileId, classroomId, attendanceDate])
+  @@index([classroomId, attendanceDate])
+  @@index([studentProfileId, attendanceDate])
+  @@map("attendance_records")
 }
 
 // ============================================================================
