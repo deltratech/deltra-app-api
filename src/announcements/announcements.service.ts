@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { paginatedResult } from '../common/utils/paginate';
 import { getTenantContext } from '../tenant/tenant.context';
 import { AnnouncementAudienceType, AnnouncementChannel, AnnouncementStatus, AnnouncementTemplateCategory } from '../common/enums/announcement.enum';
+import { NotificationCategory, NotificationPriority, NotificationSourceType } from '../common/enums/notification.enum';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { CreateAnnouncementTemplateDto } from './dto/create-announcement-template.dto';
@@ -419,6 +420,11 @@ export class AnnouncementsService {
         title,
         body,
         announcementId,
+        category: NotificationCategory.announcement,
+        eventType: 'announcement_sent',
+        priority: NotificationPriority.normal,
+        sourceType: NotificationSourceType.announcement,
+        sourceId: announcementId,
         data: { type: 'announcement', announcementId },
       })),
     );

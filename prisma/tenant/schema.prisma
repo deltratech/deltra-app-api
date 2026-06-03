@@ -218,6 +218,37 @@ enum NotificationDeliveryStatus {
   @@map("notification_delivery_status")
 }
 
+enum NotificationCategory {
+  academic
+  announcement
+  attendance
+  finance
+  document
+  system
+
+  @@map("notification_category")
+}
+
+enum NotificationPriority {
+  low
+  normal
+  high
+  urgent
+
+  @@map("notification_priority")
+}
+
+enum NotificationSourceType {
+  schedule
+  announcement
+  attendance
+  invoice
+  contract
+  system
+
+  @@map("notification_source_type")
+}
+
 enum PeriodKind {
   lesson
   recess
@@ -892,6 +923,11 @@ model Notification {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String    @map("user_id") @db.Uuid
   announcementId String?   @map("announcement_id") @db.Uuid
+  category       NotificationCategory @default(system)
+  eventType      String               @map("event_type")
+  priority       NotificationPriority @default(normal)
+  sourceType     NotificationSourceType? @map("source_type")
+  sourceId       String?              @map("source_id") @db.Uuid
   title          String
   body           String
   data           Json?     @db.JsonB
@@ -904,7 +940,10 @@ model Notification {
   deliveryLogs NotificationDeliveryLog[]
 
   @@index([userId, readAt, createdAt])
+  @@unique([userId, eventType, sourceType, sourceId])
   @@index([announcementId])
+  @@index([category, priority, createdAt])
+  @@index([sourceType, sourceId])
   @@map("notifications")
 }
 

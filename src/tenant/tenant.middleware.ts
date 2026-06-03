@@ -21,13 +21,17 @@ export class TenantMiddleware implements NestMiddleware {
     const slug = this.resolveSlug(req);
     if (!slug) return next(); // public routes (health, auth/login, docs)
 
-    const tenant = await (this.prisma.tenant as any).findUnique({
-      where: { slug, deletedAt: null },
-      select: { id: true, slug: true },
-    });
+    const [tenant] = await this.prisma.$queryRaw<
+      Array<{ id: string; slug: string; status: 'active' | 'inactive' | 'suspended' }>
+    >`
+      SELECT id, slug, status::text AS status
+      FROM public.tenants
+      WHERE slug = ${slug} AND deleted_at IS NULL
+      LIMIT 1
+    `;
 
     if (!tenant) throw new NotFoundException(`Tenant '${slug}' not found`);
-    if ((tenant as { status?: string }).status === 'suspended')
+    if (tenant.status === 'suspended')
       throw new ForbiddenException(`Tenant '${slug}' is suspended`);
 
     tenantStorage.run({ tenantId: tenant.id, tenantSlug: tenant.slug }, next);

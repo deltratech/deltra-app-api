@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { paginatedResult } from '../common/utils/paginate';
 import { getTenantContext } from '../tenant/tenant.context';
+import { NotificationCategory, NotificationPriority, NotificationSourceType } from '../common/enums/notification.enum';
 import { RegisterPushDeviceDto } from './dto/register-push-device.dto';
 
 export const PUSH_NOTIFICATIONS_QUEUE = 'push-notifications';
@@ -21,6 +22,11 @@ export type CreateNotificationInput = {
   body: string;
   data?: Record<string, string>;
   announcementId?: string;
+  category?: NotificationCategory;
+  eventType: string;
+  priority?: NotificationPriority;
+  sourceType?: NotificationSourceType;
+  sourceId?: string;
 };
 
 @Injectable()
@@ -65,13 +71,15 @@ export class NotificationsService {
     });
   }
 
-  async findMine(userId: string, filters: { unreadOnly?: boolean; page?: number; limit?: number }) {
+  async findMine(userId: string, filters: { unreadOnly?: boolean; category?: NotificationCategory; priority?: NotificationPriority; page?: number; limit?: number }) {
     await this.ensureTenantUser(userId);
-    const { unreadOnly, page = 1, limit = 20 } = filters;
+    const { unreadOnly, category, priority, page = 1, limit = 20 } = filters;
     const skip = (page - 1) * limit;
     const where = {
       userId,
       ...(unreadOnly ? { readAt: null } : {}),
+      ...(category ? { category } : {}),
+      ...(priority ? { priority } : {}),
     };
     const [data, total] = await Promise.all([
       this.tenantPrisma.client.notification.findMany({
@@ -94,15 +102,33 @@ export class NotificationsService {
 
   async createAndQueue(input: CreateNotificationInput) {
     await this.ensureTenantUser(input.userId);
-    const notification = await this.tenantPrisma.client.notification.create({
-      data: {
-        userId: input.userId,
-        announcementId: input.announcementId,
-        title: input.title,
-        body: input.body,
-        data: input.data as any,
-      },
-    });
+    const data = {
+      userId: input.userId,
+      announcementId: input.announcementId,
+      category: (input.category ?? NotificationCategory.system) as any,
+      eventType: input.eventType,
+      priority: (input.priority ?? NotificationPriority.normal) as any,
+      sourceType: input.sourceType as any,
+      sourceId: input.sourceId,
+      title: input.title,
+      body: input.body,
+      data: input.data as any,
+    };
+
+    const notification = input.sourceType && input.sourceId
+      ? await this.tenantPrisma.client.notification.upsert({
+          where: {
+            userId_eventType_sourceType_sourceId: {
+              userId: input.userId,
+              eventType: input.eventType,
+              sourceType: input.sourceType as any,
+              sourceId: input.sourceId,
+            },
+          },
+          update: data,
+          create: data,
+        })
+      : await this.tenantPrisma.client.notification.create({ data });
 
     await this.queue.add(SEND_PUSH_NOTIFICATION_JOB, {
       tenantSlug: input.tenantSlug,
@@ -128,6 +154,9 @@ export class NotificationsService {
       title: input.title,
       body: input.body,
       data: input.data,
+      eventType: 'test',
+      category: NotificationCategory.system,
+      priority: NotificationPriority.normal,
     });
   }
 

@@ -10,6 +10,9 @@ import { CreatePeriodRowDto } from './dto/create-period-row.dto';
 import { UpdatePeriodRowDto } from './dto/update-period-row.dto';
 import { ScheduleStatus } from '../common/enums/schedule-status.enum';
 import { paginatedResult } from '../common/utils/paginate';
+import { NotificationsService } from '../notifications/notifications.service';
+import { getTenantContext } from '../tenant/tenant.context';
+import { NotificationCategory, NotificationPriority, NotificationSourceType } from '../common/enums/notification.enum';
 
 const ENTRY_INCLUDE = {
   subject: { select: { id: true, code: true, name: true } },
@@ -31,7 +34,10 @@ const DEFAULT_ACTIVE_DAYS = [1, 2, 3, 4, 5];
 
 @Injectable()
 export class SchedulesService {
-  constructor(private readonly tenantPrisma: PrismaTenantService) {}
+  constructor(
+    private readonly tenantPrisma: PrismaTenantService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private isUniqueConstraintError(error: unknown): error is { code: string } {
     return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'P2002';
@@ -152,7 +158,7 @@ export class SchedulesService {
     const existing = await this.findOne(id);
     if (dto.classroomId) await this.ensureClassroom(dto.classroomId);
 
-    return this.tenantPrisma.client.schedule.update({
+    const schedule = await this.tenantPrisma.client.schedule.update({
       where: { id },
       data: {
         classroomId: dto.classroomId,
@@ -165,15 +171,19 @@ export class SchedulesService {
       },
       include: SCHEDULE_INCLUDE,
     });
+    if (dto.status === 'published' && existing.status !== 'published') await this.notifySchedulePublished(schedule);
+    return schedule;
   }
 
   async publish(id: string) {
-    await this.findOne(id);
-    return this.tenantPrisma.client.schedule.update({
+    const existing = await this.findOne(id);
+    const schedule = await this.tenantPrisma.client.schedule.update({
       where: { id },
       data: { status: 'published', publishedAt: new Date() },
       include: SCHEDULE_INCLUDE,
     });
+    if (existing.status !== 'published') await this.notifySchedulePublished(schedule);
+    return schedule;
   }
 
   async archive(id: string) {
@@ -306,6 +316,64 @@ export class SchedulesService {
       select: { id: true },
     });
     if (!classroom) throw new NotFoundException(`Classroom ${classroomId} not found`);
+  }
+
+  private async notifySchedulePublished(schedule: {
+    id: string;
+    classroomId: string;
+    academicYear: string;
+    semester: number;
+    classroom: { name: string; gradeLevel: number };
+    entries: Array<{ teacher: { user: { id: string } } }>;
+  }) {
+    const tenantSlug = getTenantContext().tenantSlug;
+    const enrollments = await this.tenantPrisma.client.enrollment.findMany({
+      where: { classroomId: schedule.classroomId, status: 'active', studentProfile: { status: 'active' } },
+      include: {
+        studentProfile: {
+          select: {
+            userId: true,
+            guardians: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    const userIds = new Set<string>();
+    for (const enrollment of enrollments) {
+      userIds.add(enrollment.studentProfile.userId);
+      for (const guardian of enrollment.studentProfile.guardians) {
+        if (guardian.userId) userIds.add(guardian.userId);
+      }
+    }
+    for (const entry of schedule.entries) {
+      userIds.add(entry.teacher.user.id);
+    }
+
+    const title = 'Class schedule published';
+    const body = `Schedule for ${schedule.classroom.name} semester ${schedule.semester} has been published.`;
+    await this.notifications.createManyAndQueue(
+      [...userIds].map((userId) => ({
+        tenantSlug,
+        userId,
+        title,
+        body,
+        category: NotificationCategory.academic,
+        eventType: 'schedule_published',
+        priority: NotificationPriority.normal,
+        sourceType: NotificationSourceType.schedule,
+        sourceId: schedule.id,
+        data: {
+          type: 'schedule_published',
+          scheduleId: schedule.id,
+          classroomId: schedule.classroomId,
+          classroomName: schedule.classroom.name,
+          gradeLevel: String(schedule.classroom.gradeLevel),
+          academicYear: schedule.academicYear,
+          semester: String(schedule.semester),
+        },
+      })),
+    );
   }
 
   private async validateEntryReferences(dto: CreateScheduleEntryDto) {

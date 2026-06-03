@@ -12,8 +12,9 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -21,6 +22,8 @@ import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { UpsertTenantSettingsDto } from './dto/upsert-tenant-settings.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { ValidateTenantSlugDto } from './dto/validate-tenant-slug.dto';
+import { ApiKeyGuard } from '../common/guards/api-key.guard';
+import { RequireApiKey } from '../common/decorators/require-api-key.decorator';
 
 @ApiTags('Tenants')
 @ApiBearerAuth()
@@ -29,11 +32,24 @@ export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
   @Public()
+  @RequireApiKey()
+  @UseGuards(ApiKeyGuard)
   @Get('validate-slug')
   @ApiOperation({ summary: 'Validate whether a tenant slug is available' })
+  @ApiHeader({ name: 'x-api-key', required: true })
   @ApiQuery({ name: 'slug', required: true, description: 'Slug to validate' })
   validateSlug(@Query() query: ValidateTenantSlugDto) {
     return this.tenantsService.validateSlug(query.slug);
+  }
+
+  @Public()
+  @RequireApiKey()
+  @UseGuards(ApiKeyGuard)
+  @Get('resolve/:slug')
+  @ApiOperation({ summary: 'Resolve public tenant metadata by slug before tenant login' })
+  @ApiHeader({ name: 'x-api-key', required: true })
+  resolveBySlug(@Param('slug') slug: string) {
+    return this.tenantsService.resolveBySlug(slug);
   }
 
   // ── Tenants ─────────────────────────────────────────────────────────────────

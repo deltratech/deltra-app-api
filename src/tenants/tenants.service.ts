@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -165,6 +166,59 @@ export class TenantsService {
       slug,
       available: !existing,
       message: existing ? `Slug '${slug}' is already taken` : `Slug '${slug}' is available`,
+    };
+  }
+
+  async resolveBySlug(rawSlug: string) {
+    const slug = rawSlug.trim().toLowerCase();
+    const [tenant] = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        slug: string;
+        name: string;
+        type: 'school' | 'network';
+        status: 'active' | 'inactive' | 'suspended';
+        deletedAt: Date | null;
+        logoUrl: string | null;
+        primaryColor: string | null;
+        secondaryColor: string | null;
+        locale: string | null;
+        timezone: string | null;
+      }>
+    >`
+      SELECT
+        t.id,
+        t.slug,
+        t.name,
+        t.type::text AS type,
+        t.status::text AS status,
+        t.deleted_at AS "deletedAt"     
+      FROM public.tenants t      
+      WHERE t.slug = ${slug}
+      LIMIT 1
+    `;
+
+    if (!tenant || tenant.deletedAt) throw new NotFoundException(`Tenant '${slug}' not found`);
+    if (tenant.status !== 'active') {
+      throw new ForbiddenException({
+        message: `School '${slug}' is ${tenant.status}`,
+        status: tenant.status,
+      });
+    }
+
+    return {
+      id: tenant.id,
+      slug: tenant.slug,
+      name: tenant.name,
+      type: tenant.type,
+      status: tenant.status,
+      settings: {
+        logoUrl: tenant.logoUrl,
+        primaryColor: tenant.primaryColor,
+        secondaryColor: tenant.secondaryColor,
+        locale: tenant.locale,
+        timezone: tenant.timezone,
+      },
     };
   }
 

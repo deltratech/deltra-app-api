@@ -5,6 +5,7 @@ import { RegisterPushDeviceDto } from './dto/register-push-device.dto';
 import { TestPushNotificationDto } from './dto/test-push-notification.dto';
 import { FcmService } from './fcm.service';
 import { NotificationsService } from './notifications.service';
+import { NotificationCategory, NotificationPriority } from '../common/enums/notification.enum';
 
 type CurrentUserContext = { userId: string; tenantSlug?: string };
 
@@ -26,15 +27,19 @@ export class NotificationsController {
   @Get()
   @ApiOperation({ summary: 'List current user notifications' })
   @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean })
+  @ApiQuery({ name: 'category', enum: NotificationCategory, required: false })
+  @ApiQuery({ name: 'priority', enum: NotificationPriority, required: false })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findMine(
     @CurrentUser() user: CurrentUserContext,
     @Query('unreadOnly', new ParseBoolPipe({ optional: true })) unreadOnly?: boolean,
+    @Query('category') category?: NotificationCategory,
+    @Query('priority') priority?: NotificationPriority,
     @Query('page', new ParseIntPipe({ optional: true })) page?: number,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.service.findMine(user.userId, { unreadOnly, page, limit });
+    return this.service.findMine(user.userId, { unreadOnly, category, priority, page, limit });
   }
 
   @Patch(':id/read')

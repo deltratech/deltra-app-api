@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { REQUIRE_API_KEY } from '../decorators/require-api-key.decorator';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -21,7 +22,11 @@ export class ApiKeyGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
+    const requireApiKey = this.reflector.getAllAndOverride<boolean>(REQUIRE_API_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic && !requireApiKey) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
     const key = request.headers['x-api-key'];

@@ -8,6 +8,10 @@ import { GlobalExceptionFilter } from './common/filters/tenant-exception.filter'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const bodyLimit = process.env.BODY_LIMIT ?? '20mb';
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN?.split(',') ?? true,
+    credentials: true,
+  });
   app.use(json({ limit: bodyLimit }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
