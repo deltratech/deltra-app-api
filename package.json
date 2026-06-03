@@ -6,7 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && npm run copy:tenant-engine",
+    "copy:tenant-engine": "mkdir -p dist/generated/tenant-client && cp src/generated/tenant-client/libquery_engine-* dist/generated/tenant-client/ 2>/dev/null || true",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

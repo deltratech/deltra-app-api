@@ -15,14 +15,13 @@ COPY . .
 RUN npx prisma generate
 RUN npx prisma generate --schema=prisma/tenant/schema.prisma
 RUN npm run build
-# Copy tenant engine binary alongside the compiled client so production can find it
-RUN find src/generated/tenant-client -name "*.so.node" -exec cp {} dist/generated/tenant-client/ \;
 
 FROM node:24-alpine AS production
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/prisma ./prisma
 # Preserve the generated engine binaries (skipped by tsc, stripped by npm ci --omit=dev)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma

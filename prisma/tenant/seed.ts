@@ -9,13 +9,12 @@
 
 import { PrismaClient } from '../../src/generated/tenant-client';
 import * as bcrypt from 'bcrypt';
+import { tenantSeedUrl } from './seed-url';
 
 // ── Connection ──────────────────────────────────────────────────────────────
 
 const schema  = process.env.SEED_SCHEMA ?? 'tenant_sma_test';
-const baseUrl = (process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5433/deltra')
-  .replace(/[?&]schema=[^&]*/g, '').replace(/[?&]$/, '');
-const dbUrl   = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}schema=${schema}`;
+const dbUrl = tenantSeedUrl(schema);
 
 const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 

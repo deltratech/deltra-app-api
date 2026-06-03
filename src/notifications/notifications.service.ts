@@ -1,5 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { paginatedResult } from '../common/utils/paginate';
@@ -12,7 +13,8 @@ export const SEND_PUSH_NOTIFICATION_JOB = 'send-push-notification';
 
 export type PushNotificationJob = {
   tenantSlug: string;
-  notificationId: string;
+  eventId: string;
+  recipientIds: string[];
 };
 
 export type CreateNotificationInput = {
@@ -33,6 +35,7 @@ export type CreateNotificationInput = {
 export class NotificationsService {
   constructor(
     private readonly tenantPrisma: PrismaTenantService,
+    private readonly config: ConfigService,
     @InjectQueue(PUSH_NOTIFICATIONS_QUEUE) private readonly queue: Queue<PushNotificationJob>,
   ) {}
 
@@ -75,78 +78,108 @@ export class NotificationsService {
     await this.ensureTenantUser(userId);
     const { unreadOnly, category, priority, page = 1, limit = 20 } = filters;
     const skip = (page - 1) * limit;
-    const where = {
-      userId,
-      ...(unreadOnly ? { readAt: null } : {}),
+    const eventWhere = {
       ...(category ? { category } : {}),
       ...(priority ? { priority } : {}),
     };
+    const where = {
+      userId,
+      ...(unreadOnly ? { readAt: null } : {}),
+      ...(category || priority ? { event: eventWhere } : {}),
+    };
     const [data, total] = await Promise.all([
-      this.tenantPrisma.client.notification.findMany({
+      this.tenantPrisma.client.notificationRecipient.findMany({
         where,
+        include: { event: true },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.tenantPrisma.client.notification.count({ where }),
+      this.tenantPrisma.client.notificationRecipient.count({ where }),
     ]);
     return paginatedResult(data, total, page, limit);
   }
 
   async markRead(userId: string, id: string) {
     await this.ensureTenantUser(userId);
-    const notification = await this.tenantPrisma.client.notification.findFirst({ where: { id, userId } });
-    if (!notification) throw new NotFoundException(`Notification ${id} not found`);
-    return this.tenantPrisma.client.notification.update({ where: { id }, data: { readAt: notification.readAt ?? new Date() } });
+    const recipient = await this.tenantPrisma.client.notificationRecipient.findFirst({ where: { id, userId } });
+    if (!recipient) throw new NotFoundException(`Notification ${id} not found`);
+    return this.tenantPrisma.client.notificationRecipient.update({
+      where: { id },
+      data: { readAt: recipient.readAt ?? new Date() },
+      include: { event: true },
+    });
   }
 
   async createAndQueue(input: CreateNotificationInput) {
-    await this.ensureTenantUser(input.userId);
-    const data = {
-      userId: input.userId,
-      announcementId: input.announcementId,
-      category: (input.category ?? NotificationCategory.system) as any,
-      eventType: input.eventType,
-      priority: (input.priority ?? NotificationPriority.normal) as any,
-      sourceType: input.sourceType as any,
-      sourceId: input.sourceId,
-      title: input.title,
-      body: input.body,
-      data: input.data as any,
-    };
-
-    const notification = input.sourceType && input.sourceId
-      ? await this.tenantPrisma.client.notification.upsert({
-          where: {
-            userId_eventType_sourceType_sourceId: {
-              userId: input.userId,
-              eventType: input.eventType,
-              sourceType: input.sourceType as any,
-              sourceId: input.sourceId,
-            },
-          },
-          update: data,
-          create: data,
-        })
-      : await this.tenantPrisma.client.notification.create({ data });
-
-    await this.queue.add(SEND_PUSH_NOTIFICATION_JOB, {
-      tenantSlug: input.tenantSlug,
-      notificationId: notification.id,
-    });
-
-    return notification;
+    const [recipient] = await this.createManyAndQueue([input]);
+    return recipient;
   }
 
   async createManyAndQueue(inputs: CreateNotificationInput[]) {
-    const notifications = [] as Awaited<ReturnType<typeof this.createAndQueue>>[];
-    for (const input of inputs) {
-      notifications.push(await this.createAndQueue(input));
+    if (inputs.length === 0) return [];
+
+    const [first] = inputs;
+    const userIds = [...new Set(inputs.map((input) => input.userId))];
+    await Promise.all(userIds.map((userId) => this.ensureTenantUser(userId)));
+
+    const eventData = {
+      announcementId: first.announcementId,
+      category: (first.category ?? NotificationCategory.system) as any,
+      eventType: first.eventType,
+      priority: (first.priority ?? NotificationPriority.normal) as any,
+      sourceType: first.sourceType as any,
+      sourceId: first.sourceId,
+      title: first.title,
+      body: first.body,
+      data: first.data as any,
+    };
+
+    const event = first.sourceType && first.sourceId
+      ? await this.tenantPrisma.client.notificationEvent.upsert({
+          where: {
+            eventType_sourceType_sourceId: {
+              eventType: first.eventType,
+              sourceType: first.sourceType as any,
+              sourceId: first.sourceId,
+            },
+          },
+          update: eventData,
+          create: eventData,
+        })
+      : await this.tenantPrisma.client.notificationEvent.create({ data: eventData });
+
+    await this.tenantPrisma.client.notificationRecipient.createMany({
+      data: userIds.map((userId) => ({ eventId: event.id, userId })),
+      skipDuplicates: true,
+    });
+
+    const recipients = await this.tenantPrisma.client.notificationRecipient.findMany({
+      where: { eventId: event.id, userId: { in: userIds } },
+      include: { event: true },
+    });
+
+    for (const recipientIds of this.chunk(recipients.map((recipient) => recipient.id), this.chunkSize())) {
+      await this.queue.add(SEND_PUSH_NOTIFICATION_JOB, {
+        tenantSlug: first.tenantSlug,
+        eventId: event.id,
+        recipientIds,
+      });
     }
-    return notifications;
+
+    return recipients;
   }
 
-  async sendTest(user: { userId: string; tenantSlug?: string }, input: { title: string; body: string; data?: Record<string, string> }) {
+  async sendTest(user: { userId: string; tenantSlug?: string }, input: {
+    title: string;
+    body: string;
+    data?: Record<string, string>;
+    category?: NotificationCategory;
+    eventType?: string;
+    priority?: NotificationPriority;
+    sourceType?: NotificationSourceType;
+    sourceId?: string;
+  }) {
     const tenantSlug = user.tenantSlug ?? getTenantContext().tenantSlug;
     return this.createAndQueue({
       tenantSlug,
@@ -154,9 +187,11 @@ export class NotificationsService {
       title: input.title,
       body: input.body,
       data: input.data,
-      eventType: 'test',
-      category: NotificationCategory.system,
-      priority: NotificationPriority.normal,
+      eventType: input.eventType ?? 'test',
+      category: input.category ?? NotificationCategory.system,
+      priority: input.priority ?? NotificationPriority.normal,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
     });
   }
 
@@ -168,5 +203,18 @@ export class NotificationsService {
     if (!user) {
       throw new ForbiddenException('Authenticated user does not belong to the current tenant');
     }
+  }
+
+  private chunkSize() {
+    const value = this.config.get<number>('NOTIFICATION_PUSH_CHUNK_SIZE', 500);
+    return Number.isFinite(value) && value > 0 ? value : 500;
+  }
+
+  private chunk<T>(items: T[], size: number) {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
   }
 }

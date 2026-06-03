@@ -11,6 +11,7 @@
 
 import { PrismaClient as PublicPrismaClient } from '@prisma/client';
 import { PrismaClient as TenantPrismaClient } from '../../src/generated/tenant-client';
+import { tenantSeedUrl } from './seed-url';
 import * as bcrypt from 'bcrypt';
 
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'sick' | 'absent';
@@ -267,10 +268,7 @@ async function ensureSchema(schema: string) {
 }
 
 function createTenantClient(schema: string): TenantClient {
-  const baseUrl = (process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/deltra')
-    .replace(/[?&]schema=[^&]*/g, '')
-    .replace(/[?&]$/, '');
-  const url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}schema=${schema}`;
+  const url = tenantSeedUrl(schema);
   return new TenantPrismaClient({ datasources: { db: { url } } });
 }
 

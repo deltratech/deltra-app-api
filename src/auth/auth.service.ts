@@ -123,8 +123,8 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const accessToken = this.signToken(user.id, tenant.id, tenant.slug);
-    const refreshToken = await this.generateRefreshToken(user.id, tenant.id, tenant.slug);
+    const accessToken = this.signToken(user.id, tenant.id, tenant.slug, user.role);
+    const refreshToken = await this.generateRefreshToken(user.id, tenant.id, tenant.slug, false, false, user.role);
 
     return {
       accessToken,
@@ -153,7 +153,7 @@ export class AuthService {
 
     const newAccessToken = payload.isPlatformUser
       ? this.signPlatformToken(payload.userId, payload.role, payload.networkId, payload.isSuperAdmin)
-      : this.signToken(payload.userId, payload.tenantId!, payload.tenantSlug!);
+      : this.signToken(payload.userId, payload.tenantId!, payload.tenantSlug!, payload.role);
 
     const newRefreshToken = await this.generateRefreshToken(
       payload.userId,
@@ -206,7 +206,7 @@ export class AuthService {
     });
 
     return {
-      accessToken: this.signToken(user.id, tenant.id, tenant.slug),
+      accessToken: this.signToken(user.id, tenant.id, tenant.slug, user.role),
       user,
       tenant: {
         id: tenant.id,
@@ -292,8 +292,8 @@ export class AuthService {
     return Math.floor(100_000 + Math.random() * 900_000).toString();
   }
 
-  private signToken(userId: string, tenantId: string, tenantSlug: string): string {
-    const payload: JwtPayload = { sub: userId, tenantId, tenantSlug };
+  private signToken(userId: string, tenantId: string, tenantSlug: string, role?: string): string {
+    const payload: JwtPayload = { sub: userId, tenantId, tenantSlug, role };
     return this.jwt.sign(payload);
   }
 

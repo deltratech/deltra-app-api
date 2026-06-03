@@ -225,7 +225,8 @@ export class AnnouncementsService {
   }
 
   async sendDueScheduled(actor: ActorContext) {
-    if (!BROADCAST_ROLES.has(actor.role ?? '')) {
+    const role = await this.getActorRole(actor);
+    if (!BROADCAST_ROLES.has(role)) {
       throw new ForbiddenException('Only principal/admin can dispatch scheduled announcements');
     }
 
@@ -308,14 +309,16 @@ export class AnnouncementsService {
   }
 
   private async ensureCanUpdate(createdByUserId: string, audienceType: AnnouncementAudienceType, classroomId: string | undefined, actor: ActorContext) {
-    if (BROADCAST_ROLES.has(actor.role ?? '')) return;
+    const role = await this.getActorRole(actor);
+    if (BROADCAST_ROLES.has(role)) return;
     if (createdByUserId !== actor.userId) throw new ForbiddenException('You can only update announcements you created');
     await this.ensureCanManage(audienceType, classroomId, actor);
   }
 
   private async ensureCanManage(audienceType: AnnouncementAudienceType, classroomId: string | undefined, actor: ActorContext) {
-    if (BROADCAST_ROLES.has(actor.role ?? '')) return;
-    if (actor.role !== 'teacher') throw new ForbiddenException('Only principal/admin or allowed teachers can manage announcements');
+    const role = await this.getActorRole(actor);
+    if (BROADCAST_ROLES.has(role)) return;
+    if (role !== 'teacher') throw new ForbiddenException('Only principal/admin or allowed teachers can manage announcements');
     if (audienceType !== AnnouncementAudienceType.class || !classroomId) {
       throw new ForbiddenException('Teachers can only send class announcements');
     }
@@ -333,6 +336,15 @@ export class AnnouncementsService {
       select: { id: true },
     });
     if (!assignment && !homeroom) throw new ForbiddenException('Teacher is not assigned to this class');
+  }
+
+  private async getActorRole(actor: ActorContext) {
+    if (actor.role) return actor.role;
+    const user = await this.tenantPrisma.client.user.findFirst({
+      where: { id: actor.userId, deletedAt: null, status: 'active' },
+      select: { role: true },
+    });
+    return user?.role ?? '';
   }
 
   private async resolveRecipients(announcement: any): Promise<RecipientInput[]> {
@@ -408,8 +420,15 @@ export class AnnouncementsService {
     });
 
     const userIds = [...new Set(recipients.map((recipient) => recipient.userId).filter((userId): userId is string => Boolean(userId)))];
-    const existing = await this.tenantPrisma.client.notification.findMany({
-      where: { announcementId, userId: { in: userIds } },
+    const existing = await this.tenantPrisma.client.notificationRecipient.findMany({
+      where: {
+        userId: { in: userIds },
+        event: {
+          eventType: 'announcement_sent',
+          sourceType: NotificationSourceType.announcement as any,
+          sourceId: announcementId,
+        },
+      },
       select: { userId: true },
     });
     const existingUserIds = new Set(existing.map((notification) => notification.userId));

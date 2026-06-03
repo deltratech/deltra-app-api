@@ -287,7 +287,7 @@ model User {
   announcementAuditLogs AnnouncementAuditLog[]
   announcementRecipients AnnouncementRecipient[]
   pushDeviceTokens PushDeviceToken[]
-  notifications Notification[]
+  notificationRecipients NotificationRecipient[]
 
   @@map("users")
 }
@@ -798,7 +798,7 @@ model Announcement {
   recipients      AnnouncementRecipient[]
   deliveryLogs    AnnouncementDeliveryLog[]
   auditLogs       AnnouncementAuditLog[]
-  notifications   Notification[]
+  notificationEvents NotificationEvent[]
 
   @@index([audienceType, targetGradeLevel])
   @@index([targetClassroomId])
@@ -919,9 +919,8 @@ model PushDeviceToken {
   @@map("push_device_tokens")
 }
 
-model Notification {
+model NotificationEvent {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
   announcementId String?   @map("announcement_id") @db.Uuid
   category       NotificationCategory @default(system)
   eventType      String               @map("event_type")
@@ -931,25 +930,39 @@ model Notification {
   title          String
   body           String
   data           Json?     @db.JsonB
-  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user         User                      @relation(fields: [userId], references: [id])
-  announcement Announcement?             @relation(fields: [announcementId], references: [id], onDelete: SetNull)
-  deliveryLogs NotificationDeliveryLog[]
+  announcement Announcement? @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  recipients   NotificationRecipient[]
 
-  @@index([userId, readAt, createdAt])
-  @@unique([userId, eventType, sourceType, sourceId])
+  @@unique([eventType, sourceType, sourceId])
   @@index([announcementId])
   @@index([category, priority, createdAt])
   @@index([sourceType, sourceId])
-  @@map("notifications")
+  @@map("notification_events")
+}
+
+model NotificationRecipient {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId   String    @map("event_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  event        NotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id])
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@unique([eventId, userId])
+  @@index([userId, readAt, createdAt])
+  @@map("notification_recipients")
 }
 
 model NotificationDeliveryLog {
   id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  notificationId    String                     @map("notification_id") @db.Uuid
+  recipientId       String                     @map("recipient_id") @db.Uuid
   pushDeviceTokenId String                     @map("push_device_token_id") @db.Uuid
   status            NotificationDeliveryStatus @default(queued)
   provider          String                     @default("fcm")
@@ -959,10 +972,11 @@ model NotificationDeliveryLog {
   createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  notification    Notification    @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  recipient       NotificationRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   pushDeviceToken PushDeviceToken @relation(fields: [pushDeviceTokenId], references: [id], onDelete: Cascade)
 
-  @@unique([notificationId, pushDeviceTokenId])
+  @@unique([recipientId, pushDeviceTokenId])
   @@index([status, createdAt])
+  @@index([recipientId])
   @@map("notification_delivery_logs")
 }
