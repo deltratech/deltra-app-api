@@ -21,11 +21,12 @@ import { StudentAchievementsModule } from './student-achievements/student-achiev
 import { RoomsModule } from './rooms/rooms.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
 import { SchedulesModule } from './schedules/schedules.module';
-import { ScheduleRequirementsModule } from './schedule-requirements/schedule-requirements.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
 import { TeacherContractsModule } from './teacher-contracts/teacher-contracts.module';
 import { NetworksModule } from './networks/networks.module';
 import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assignments.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -46,11 +47,12 @@ import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assig
     ClassroomsModule,
     RoomsModule,
     SchedulesModule,
-    ScheduleRequirementsModule,
     TeacherUnavailabilityModule,
     TeacherContractsModule,
     NetworksModule,
     HomeroomAssignmentsModule,
+    AnnouncementsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

@@ -28,4 +28,8 @@ export class MailService {
       `,
     } satisfies SendMailOptions);
   }
+
+  async sendAnnouncement(to: string, subject: string, html: string): Promise<void> {
+    await this.queue.add(SEND_MAIL_JOB, { to, subject, html } satisfies SendMailOptions);
+  }
 }

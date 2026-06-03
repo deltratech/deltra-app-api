@@ -49,6 +49,8 @@
     "docxtemplater": "^3.68.7",
     "docxtemplater-image-module-free": "^1.1.1",
     "exceljs": "^4.4.0",
+    "firebase": "^12.14.0",
+    "firebase-admin": "^13.10.0",
     "ioredis": "^5.10.1",
     "nodemailer": "^8.0.7",
     "passport": "^0.7.0",

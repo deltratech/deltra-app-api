@@ -276,7 +276,7 @@ function createTenantClient(schema: string): TenantClient {
 
 async function upsertUser(
   db: TenantClient,
-  user: { email?: string; username?: string; fullName: string; role: 'teacher' | 'student' },
+  user: { email?: string; username?: string; fullName: string; role: 'teacher' | 'student' | 'parent' },
   passwordHash: string,
 ) {
   const where = user.email ? { email: user.email } : { username: user.username! };
@@ -531,11 +531,23 @@ async function seedSchool(config: SchoolConfig) {
           },
         }));
 
+      const parentUser = await upsertUser(
+        db,
+        {
+          email: student.parentEmail ?? undefined,
+          username: student.parentEmail ? undefined : `parent.${student.username}`,
+          fullName: student.parentName,
+          role: 'parent',
+        },
+        passwordHash,
+      );
+
       const guardianExists = await db.guardian.findFirst({ where: { studentProfileId: profile.id, name: student.parentName } });
       if (!guardianExists) {
         await db.guardian.create({
           data: {
             studentProfileId: profile.id,
+            userId: parentUser.id,
             name: student.parentName,
             relationship: 'parent',
             phone: student.parentPhone,
@@ -543,6 +555,8 @@ async function seedSchool(config: SchoolConfig) {
             isPrimary: true,
           },
         });
+      } else if (!guardianExists.userId) {
+        await db.guardian.update({ where: { id: guardianExists.id }, data: { userId: parentUser.id } });
       }
 
       const enrollmentExists = await db.enrollment.findUnique({

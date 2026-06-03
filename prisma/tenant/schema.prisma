@@ -28,6 +28,7 @@ enum UserRole {
   finance
   teacher
   student
+  parent
   admission
 
   @@map("user_role")
@@ -161,6 +162,62 @@ enum ScheduleStatus {
   @@map("schedule_status")
 }
 
+enum AnnouncementAudienceType {
+  school
+  grade
+  class
+
+  @@map("announcement_audience_type")
+}
+
+enum AnnouncementChannel {
+  in_app
+  whatsapp
+  email
+
+  @@map("announcement_channel")
+}
+
+enum AnnouncementStatus {
+  draft
+  scheduled
+  sent
+  cancelled
+
+  @@map("announcement_status")
+}
+
+enum AnnouncementDeliveryStatus {
+  pending
+  queued
+  sent
+  failed
+
+  @@map("announcement_delivery_status")
+}
+
+enum AnnouncementTemplateCategory {
+  school_holiday
+  parent_meeting
+  exam
+
+  @@map("announcement_template_category")
+}
+
+enum PushDevicePlatform {
+  web
+
+  @@map("push_device_platform")
+}
+
+enum NotificationDeliveryStatus {
+  queued
+  sent
+  failed
+
+  @@map("notification_delivery_status")
+}
+
 enum PeriodKind {
   lesson
   recess
@@ -193,7 +250,13 @@ model User {
 
   studentProfile StudentProfile?
   teacherProfile TeacherProfile?
+  guardianAccounts Guardian[]
   attendanceRecords AttendanceRecord[]
+  announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
+  announcementAuditLogs AnnouncementAuditLog[]
+  announcementRecipients AnnouncementRecipient[]
+  pushDeviceTokens PushDeviceToken[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -227,6 +290,7 @@ model StudentProfile {
   portfolios   StudentPortfolio[]
   achievements StudentAchievement[]
   attendanceRecords AttendanceRecord[]
+  announcementRecipients AnnouncementRecipient[]
 
   @@map("student_profiles")
 }
@@ -235,6 +299,7 @@ model StudentProfile {
 model Guardian {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   studentProfileId String   @map("student_profile_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
   name             String
   relationship     String?
   phone            String?
@@ -245,7 +310,10 @@ model Guardian {
   updatedAt        DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
 
   studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  user           User?          @relation(fields: [userId], references: [id])
+  announcementRecipients AnnouncementRecipient[]
 
+  @@index([userId])
   @@map("guardians")
 }
 
@@ -359,6 +427,7 @@ model Classroom {
   requirements  ScheduleRequirement[]
   homeroomAssignments HomeroomAssignment[]
   attendanceRecords AttendanceRecord[]
+  announcements Announcement[]
 
   @@unique([name, academicYear, semester])
   @@map("classrooms")
@@ -669,4 +738,192 @@ model TeacherUnavailability {
 
   @@unique([teacherProfileId, dayOfWeek, periodRowId])
   @@map("teacher_unavailability")
+}
+
+// ============================================================================
+// ANNOUNCEMENTS
+// ============================================================================
+
+model Announcement {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title              String
+  body               String
+  audienceType       AnnouncementAudienceType @map("audience_type")
+  targetGradeLevel   Int?                     @map("target_grade_level") @db.SmallInt
+  targetClassroomId  String?                  @map("target_classroom_id") @db.Uuid
+  channels           AnnouncementChannel[]    @default([])
+  status             AnnouncementStatus       @default(draft)
+  scheduledAt        DateTime?                @map("scheduled_at") @db.Timestamptz(6)
+  sentAt             DateTime?                @map("sent_at") @db.Timestamptz(6)
+  pinned             Boolean                  @default(false)
+  createdByUserId    String                   @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?                @map("deleted_at") @db.Timestamptz(6)
+
+  targetClassroom Classroom? @relation(fields: [targetClassroomId], references: [id])
+  createdBy       User       @relation("AnnouncementCreatedBy", fields: [createdByUserId], references: [id])
+  attachments     AnnouncementAttachment[]
+  recipients      AnnouncementRecipient[]
+  deliveryLogs    AnnouncementDeliveryLog[]
+  auditLogs       AnnouncementAuditLog[]
+  notifications   Notification[]
+
+  @@index([audienceType, targetGradeLevel])
+  @@index([targetClassroomId])
+  @@index([status, scheduledAt])
+  @@index([pinned, createdAt])
+  @@map("announcements")
+}
+
+model AnnouncementAttachment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId String   @map("announcement_id") @db.Uuid
+  fileUrl        String   @map("file_url")
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  sizeBytes      Int?     @map("size_bytes")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@map("announcement_attachments")
+}
+
+model AnnouncementRecipient {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId   String    @map("announcement_id") @db.Uuid
+  studentProfileId String    @map("student_profile_id") @db.Uuid
+  guardianId       String?   @map("guardian_id") @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  recipientKey     String    @map("recipient_key")
+  name             String
+  phone            String?
+  email            String?
+  readAt           DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  announcement   Announcement   @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  guardian       Guardian?      @relation(fields: [guardianId], references: [id])
+  user           User?          @relation(fields: [userId], references: [id])
+  deliveryLogs   AnnouncementDeliveryLog[]
+
+  @@unique([announcementId, recipientKey])
+  @@index([userId, readAt])
+  @@index([studentProfileId, readAt])
+  @@map("announcement_recipients")
+}
+
+model AnnouncementDeliveryLog {
+  id             String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId String                     @map("announcement_id") @db.Uuid
+  recipientId    String                     @map("recipient_id") @db.Uuid
+  channel        AnnouncementChannel
+  status         AnnouncementDeliveryStatus @default(pending)
+  destination    String?
+  provider       String?
+  error          String?
+  sentAt         DateTime?                  @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  announcement Announcement          @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  recipient    AnnouncementRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, channel])
+  @@index([announcementId, channel, status])
+  @@map("announcement_delivery_logs")
+}
+
+model AnnouncementTemplate {
+  id        String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category  AnnouncementTemplateCategory
+  title     String
+  body      String
+  isActive  Boolean                      @default(true) @map("is_active")
+  createdAt DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?                    @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([category, isActive])
+  @@map("announcement_templates")
+}
+
+model AnnouncementAuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId String?  @map("announcement_id") @db.Uuid
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  action         String
+  metadata       Json?    @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  announcement Announcement? @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  actor        User          @relation(fields: [actorUserId], references: [id])
+
+  @@index([announcementId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("announcement_audit_logs")
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model PushDeviceToken {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String             @map("user_id") @db.Uuid
+  token      String             @unique
+  platform   PushDevicePlatform @default(web)
+  userAgent  String?            @map("user_agent")
+  lastSeenAt DateTime           @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  revokedAt  DateTime?          @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User                      @relation(fields: [userId], references: [id])
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@index([userId, revokedAt])
+  @@map("push_device_tokens")
+}
+
+model Notification {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  announcementId String?   @map("announcement_id") @db.Uuid
+  title          String
+  body           String
+  data           Json?     @db.JsonB
+  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User                      @relation(fields: [userId], references: [id])
+  announcement Announcement?             @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@index([userId, readAt, createdAt])
+  @@index([announcementId])
+  @@map("notifications")
+}
+
+model NotificationDeliveryLog {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notificationId    String                     @map("notification_id") @db.Uuid
+  pushDeviceTokenId String                     @map("push_device_token_id") @db.Uuid
+  status            NotificationDeliveryStatus @default(queued)
+  provider          String                     @default("fcm")
+  providerMessageId String?                    @map("provider_message_id")
+  error             String?
+  sentAt            DateTime?                  @map("sent_at") @db.Timestamptz(6)
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  notification    Notification    @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  pushDeviceToken PushDeviceToken @relation(fields: [pushDeviceTokenId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, pushDeviceTokenId])
+  @@index([status, createdAt])
+  @@map("notification_delivery_logs")
 }

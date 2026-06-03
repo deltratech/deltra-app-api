@@ -24,7 +24,7 @@ const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 function log(msg: string) { console.log(`[seed] ${msg}`); }
 
 async function upsertUser(
-  data: { email?: string; username?: string; fullName: string; role: 'teacher' | 'student' | 'school_admin' },
+  data: { email?: string; username?: string; fullName: string; role: 'teacher' | 'student' | 'school_admin' | 'parent' },
   passwordHash: string,
 ) {
   const where = data.email ? { email: data.email } : { username: data.username! };
@@ -327,18 +327,34 @@ async function main() {
       });
     }
 
+    const parentUser = await upsertUser(
+      {
+        email: s.parentEmail ?? undefined,
+        username: s.parentEmail ? undefined : `parent.${s.username}`,
+        fullName: s.parentName,
+        role: 'parent',
+      },
+      PASSWORD_HASH,
+    );
+
     // Guardian
     const guardianCount = await prisma.guardian.count({ where: { studentProfileId: profile.id } });
     if (guardianCount === 0) {
       await prisma.guardian.create({
         data: {
           studentProfileId: profile.id,
+          userId:           parentUser.id,
           name:             s.parentName,
           relationship:     'parent',
           phone:            s.parentPhone,
           email:            s.parentEmail ?? undefined,
           isPrimary:        true,
         },
+      });
+    } else {
+      await prisma.guardian.updateMany({
+        where: { studentProfileId: profile.id, userId: null },
+        data: { userId: parentUser.id },
       });
     }
 

@@ -5,4 +5,5 @@ export enum UserRole {
   finance      = 'finance',
   teacher      = 'teacher',
   student      = 'student',
+  parent       = 'parent',
 }
