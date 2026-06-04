@@ -27,6 +27,7 @@ import { NetworksModule } from './networks/networks.module';
 import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assignments.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AcademicNotesModule } from './academic-notes/academic-notes.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     HomeroomAssignmentsModule,
     AnnouncementsModule,
     NotificationsModule,
+    AcademicNotesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

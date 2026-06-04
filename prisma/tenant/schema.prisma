@@ -244,6 +244,7 @@ enum NotificationSourceType {
   attendance
   invoice
   contract
+  academic_note
   system
 
   @@map("notification_source_type")
@@ -288,6 +289,7 @@ model User {
   announcementRecipients AnnouncementRecipient[]
   pushDeviceTokens PushDeviceToken[]
   notificationRecipients NotificationRecipient[]
+  academicNotesCreated AcademicNote[] @relation("AcademicNoteCreatedBy")
 
   @@map("users")
 }
@@ -320,6 +322,7 @@ model StudentProfile {
   guardians    Guardian[]
   portfolios   StudentPortfolio[]
   achievements StudentAchievement[]
+  academicNotes AcademicNote[]
   attendanceRecords AttendanceRecord[]
   announcementRecipients AnnouncementRecipient[]
 
@@ -375,6 +378,7 @@ model TeacherProfile {
   unavailability TeacherUnavailability[]
   contracts     TeacherContract[]
   homeroomAssignments HomeroomAssignment[]
+  academicNotes AcademicNote[]
 
   @@map("teacher_profiles")
 }
@@ -459,6 +463,7 @@ model Classroom {
   homeroomAssignments HomeroomAssignment[]
   attendanceRecords AttendanceRecord[]
   announcements Announcement[]
+  academicNotes AcademicNote[]
 
   @@unique([name, academicYear, semester])
   @@map("classrooms")
@@ -531,6 +536,7 @@ model Subject {
   portfolios    StudentPortfolio[]
   scheduleEntries ScheduleEntry[]
   requirements  ScheduleRequirement[]
+  academicNotes AcademicNote[]
 
   @@map("subjects")
 }
@@ -658,6 +664,38 @@ model AchievementAttachment {
   achievement StudentAchievement @relation(fields: [achievementId], references: [id])
 
   @@map("achievement_attachments")
+}
+
+model AcademicNote {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentProfileId  String    @map("student_profile_id") @db.Uuid
+  teacherProfileId  String?   @map("teacher_profile_id") @db.Uuid
+  createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  subjectId         String?   @map("subject_id") @db.Uuid
+  classroomId       String?   @map("classroom_id") @db.Uuid
+  title             String
+  body              String
+  noteDate          DateTime  @default(now()) @map("note_date") @db.Date
+  visibleToGuardian Boolean   @default(true) @map("visible_to_guardian")
+  fileUrl           String?   @map("file_url")
+  fileName          String?   @map("file_name")
+  mimeType          String?   @map("mime_type")
+  sizeBytes         Int?      @map("size_bytes")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  studentProfile StudentProfile  @relation(fields: [studentProfileId], references: [id])
+  teacherProfile TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+  createdBy      User            @relation("AcademicNoteCreatedBy", fields: [createdByUserId], references: [id])
+  subject        Subject?        @relation(fields: [subjectId], references: [id])
+  classroom      Classroom?      @relation(fields: [classroomId], references: [id])
+
+  @@index([studentProfileId, noteDate])
+  @@index([teacherProfileId, noteDate])
+  @@index([classroomId, noteDate])
+  @@index([createdByUserId])
+  @@map("academic_notes")
 }
 
 // ============================================================================
