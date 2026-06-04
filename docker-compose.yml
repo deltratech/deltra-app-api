@@ -11,6 +11,7 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-deltra}?schema=public
     depends_on:
       postgres:
         condition: service_healthy
