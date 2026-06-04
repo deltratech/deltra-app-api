@@ -16,13 +16,14 @@ RUN npx prisma generate
 RUN npx prisma generate --schema=prisma/tenant/schema.prisma
 RUN npm run build
 
-FROM node:24-alpine AS production
+FROM node:22-alpine AS production
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 # Preserve the generated engine binaries (skipped by tsc, stripped by npm ci --omit=dev)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "npm run db:bootstrap && node dist/main"]
