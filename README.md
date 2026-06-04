@@ -101,7 +101,7 @@ Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 ## Schema Migration
 
 # 1. Create migration against one dev tenant schema
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=tenant_migration_dev" \
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=tenant_template" \
 npx prisma migrate deploy --schema=prisma/tenant/schema.prisma
 
 # 2. Generate tenant client
