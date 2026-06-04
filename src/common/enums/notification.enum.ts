@@ -20,5 +20,6 @@ export enum NotificationSourceType {
   attendance = 'attendance',
   invoice = 'invoice',
   contract = 'contract',
+  academic_note = 'academic_note',
   system = 'system',
 }
