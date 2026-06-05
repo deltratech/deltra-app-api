@@ -24,12 +24,18 @@ import { Public } from '../common/decorators/public.decorator';
 import { ValidateTenantSlugDto } from './dto/validate-tenant-slug.dto';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { RequireApiKey } from '../common/decorators/require-api-key.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { UsersService } from '../users/users.service';
+import { CreateNetworkAdminDto } from './dto/create-network-admin.dto';
 
 @ApiTags('Tenants')
 @ApiBearerAuth()
 @Controller('tenants')
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Public()
   @RequireApiKey()
@@ -77,6 +83,21 @@ export class TenantsController {
   @ApiOperation({ summary: 'Create a tenant and provision its schema' })
   create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);
+  }
+
+  @Post('register')
+  @ApiOperation({ summary: 'Create a school tenant and first school admin' })
+  register(@Body() dto: RegisterTenantDto) {
+    return this.tenantsService.register(dto);
+  }
+
+  @Post('network-admins')
+  @ApiOperation({ summary: 'Create a platform user with network_admin role' })
+  createNetworkAdmin(
+    @Body() dto: CreateNetworkAdminDto,
+    @CurrentUser() user: { isPlatformUser?: boolean; isSuperAdmin?: boolean },
+  ) {
+    return this.usersService.createNetworkAdmin(dto, user);
   }
 
   @Patch(':id')

@@ -4,7 +4,7 @@
  * Usage:
  *   npx ts-node --project tsconfig.seed.json prisma/seed.ts
  *
- * Idempotent: skips the user if already exists.
+ * Idempotent: creates or updates the seeded user so the documented credentials work.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -18,16 +18,30 @@ async function main() {
   const password = process.env.SUPERADMIN_PASSWORD ?? 'superadmin123';
   const fullName = process.env.SUPERADMIN_FULLNAME ?? 'Super Admin';
 
+  const passwordHash = await bcrypt.hash(password, 12);
+
   const existing = await prisma.platformUser.findFirst({
     where: { OR: [{ email }, { username }] },
   });
 
   if (existing) {
-    console.log(`[seed] Superadmin already exists (${existing.email}) — skipping.`);
+    const user = await prisma.platformUser.update({
+      where: { id: existing.id },
+      data: {
+        email,
+        username,
+        fullName,
+        passwordHash,
+        role: 'superadmin',
+        status: 'active',
+        deletedAt: null,
+      },
+    });
+
+    console.log(`[seed] Superadmin updated: ${user.email} (id: ${user.id})`);
+    console.log(`[seed] Login with identifier="${username}" and password="${password}"`);
     return;
   }
-
-  const passwordHash = await bcrypt.hash(password, 12);
 
   const user = await prisma.platformUser.create({
     data: {

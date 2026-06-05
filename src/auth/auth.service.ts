@@ -18,6 +18,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { CreateSuperadminDto } from './dto/create-superadmin.dto';
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -45,6 +46,42 @@ export class AuthService {
   async login(dto: LoginDto) {
     if (!dto.tenantSlug) return this.loginAsSuperAdmin(dto);
     return this.loginAsTenant(dto as LoginDto & { tenantSlug: string });
+  }
+
+  async createSuperadmin(dto: CreateSuperadminDto) {
+    const exists = await this.prisma.platformUser.findFirst({
+      where: {
+        OR: [
+          { email: dto.email },
+          ...(dto.username ? [{ username: dto.username }] : []),
+        ],
+        deletedAt: null,
+      },
+    });
+    if (exists) throw new ConflictException('Platform user with this email or username already exists');
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const user = await this.prisma.platformUser.create({
+      data: {
+        email: dto.email,
+        username: dto.username,
+        fullName: dto.fullName,
+        passwordHash,
+        role: 'superadmin',
+        status: 'active',
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    return user;
   }
 
   private async loginAsSuperAdmin(dto: LoginDto) {

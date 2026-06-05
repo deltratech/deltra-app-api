@@ -8,6 +8,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RequireApiKey } from '../common/decorators/require-api-key.decorator';
+import { ApiKeyGuard } from '../common/guards/api-key.guard';
+import { CreateSuperadminDto } from './dto/create-superadmin.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -19,6 +22,15 @@ export class AuthController {
   @ApiOperation({ summary: 'Login — returns access token + refresh token' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Public()
+  @RequireApiKey()
+  @UseGuards(ApiKeyGuard)
+  @Post('platform/user')
+  @ApiOperation({ summary: 'Create a public platform superadmin account (requires x-api-key)' })
+  createSuperadmin(@Body() dto: CreateSuperadminDto) {
+    return this.authService.createSuperadmin(dto);
   }
 
   @Public()
