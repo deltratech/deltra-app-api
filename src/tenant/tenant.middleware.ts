@@ -85,7 +85,7 @@ export class TenantMiddleware implements NestMiddleware {
 
   private reservedSubdomains(): Set<string> {
     return new Set(
-      ['api', 'app', ...this.splitConfigList(this.config.get<string>('RESERVED_SUBDOMAINS'))].map(
+      ['app', ...this.splitConfigList(this.config.get<string>('RESERVED_SUBDOMAINS'))].map(
         (value) => value.toLowerCase(),
       ),
     );
