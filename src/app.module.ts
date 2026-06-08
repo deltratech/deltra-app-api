@@ -28,6 +28,7 @@ import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assig
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AcademicNotesModule } from './academic-notes/academic-notes.module';
+import { SuperadminModule } from './superadmin/superadmin.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { AcademicNotesModule } from './academic-notes/academic-notes.module';
     AnnouncementsModule,
     NotificationsModule,
     AcademicNotesModule,
+    SuperadminModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
@@ -67,6 +69,7 @@ export class AppModule implements NestModule {
         { path: '', method: RequestMethod.GET },
         { path: 'health', method: RequestMethod.GET },
         { path: 'auth/login', method: RequestMethod.POST },
+        { path: 'auth/platform/user', method: RequestMethod.POST },
         { path: 'auth/forgot-password', method: RequestMethod.POST },
         { path: 'auth/reset-password', method: RequestMethod.POST },
         { path: 'api/docs/(.*)', method: RequestMethod.GET },
@@ -74,6 +77,8 @@ export class AppModule implements NestModule {
         { path: 'tenants/(.*)', method: RequestMethod.ALL },
         { path: 'networks', method: RequestMethod.ALL },
         { path: 'networks/(.*)', method: RequestMethod.ALL },
+        { path: 'superadmin', method: RequestMethod.ALL },
+        { path: 'superadmin/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

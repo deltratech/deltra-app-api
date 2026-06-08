@@ -75,6 +75,45 @@ export class UsersService {
     return paginatedResult(data, total, page, limit);
   }
 
+  async findPlatformUsers(
+    filters: { page?: number; limit?: number; search?: string; role?: string } = {},
+    actor?: { isPlatformUser?: boolean; isSuperAdmin?: boolean },
+  ) {
+    if (!actor?.isPlatformUser || !actor.isSuperAdmin) {
+      throw new ForbiddenException('Superadmin access required');
+    }
+
+    const { page = 1, limit = 20, search, role } = filters;
+    const skip = (page - 1) * limit;
+    const where = {
+      deletedAt: null,
+      ...(role ? { role: role as PlatformUserRole } : {}),
+      ...(search ? {
+        OR: [
+          { fullName: { contains: search, mode: 'insensitive' as const } },
+          { email: { contains: search, mode: 'insensitive' as const } },
+          { username: { contains: search, mode: 'insensitive' as const } },
+        ],
+      } : {}),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.platformUser.findMany({
+        where,
+        select: {
+          ...SAFE_PLATFORM_USER_SELECT,
+          network: { select: { id: true, name: true, slug: true, type: true } },
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.platformUser.count({ where }),
+    ]);
+
+    return paginatedResult(data, total, page, limit);
+  }
+
   async findOne(id: string) {
     const user = await this.tenantPrisma.client.user.findFirst({
       where: { id, deletedAt: null },

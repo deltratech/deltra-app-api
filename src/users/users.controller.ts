@@ -50,6 +50,22 @@ export class UsersController {
     return this.usersService.findAll({ search, role, page, limit });
   }
 
+  @Get('platform')
+  @ApiOperation({ summary: 'List platform users for superadmin' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by full name, email, or username' })
+  @ApiQuery({ name: 'role', required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  findPlatformUsers(
+    @CurrentUser() user: { isPlatformUser?: boolean; isSuperAdmin?: boolean },
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.usersService.findPlatformUsers({ search, role, page, limit }, user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a user by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
