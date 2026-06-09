@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +48,7 @@ export class TenantsService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: PrismaTenantService,
     private readonly provision: TenantProvisionService,
+    private readonly config: ConfigService,
   ) {}
 
   async findAll(filters: { page?: number; limit?: number; search?: string } = {}) {
@@ -186,17 +188,20 @@ export class TenantsService {
   }
 
   async create(dto: CreateTenantDto) {
+    const slug = this.normalizeSlug(dto.slug);
+    this.ensureSlugIsAllowed(slug);
+
     const exists = await this.prisma.tenant.findUnique({
-      where: { slug: dto.slug },
+      where: { slug },
     });
-    if (exists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
+    if (exists) throw new ConflictException(`Slug '${slug}' is already taken`);
 
     await this.validateTenantHierarchy(dto.type, dto.parentId);
 
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.name,
-        slug: dto.slug,
+        slug,
         type: dto.type,
         parentId: dto.parentId,
       },
@@ -257,16 +262,19 @@ export class TenantsService {
   }
 
   async register(dto: RegisterTenantDto) {
+    const slug = this.normalizeSlug(dto.slug);
+    this.ensureSlugIsAllowed(slug);
+
     const slugExists = await this.prisma.tenant.findUnique({
-      where: { slug: dto.slug },
+      where: { slug },
     });
-    if (slugExists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
+    if (slugExists) throw new ConflictException(`Slug '${slug}' is already taken`);
 
     // 1. Create tenant record in public schema
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.tenantName,
-        slug: dto.slug,
+        slug,
         type: dto.type,
       },
     });
@@ -336,7 +344,15 @@ export class TenantsService {
   }
 
   async validateSlug(rawSlug: string) {
-    const slug = rawSlug.trim().toLowerCase();
+    const slug = this.normalizeSlug(rawSlug);
+    if (this.isReservedSlug(slug)) {
+      return {
+        slug,
+        available: false,
+        message: `Slug '${slug}' is reserved`,
+      };
+    }
+
     const existing = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },
       select: { id: true, slug: true },
@@ -447,6 +463,37 @@ export class TenantsService {
         throw new BadRequestException('parentId must reference an existing foundation/network tenant');
       }
     }
+  }
+
+  private normalizeSlug(slug: string): string {
+    return slug.trim().toLowerCase();
+  }
+
+  private ensureSlugIsAllowed(slug: string) {
+    if (this.isReservedSlug(slug)) {
+      throw new ConflictException(`Slug '${slug}' is reserved`);
+    }
+  }
+
+  private isReservedSlug(slug: string): boolean {
+    return this.reservedSubdomains().has(slug);
+  }
+
+  private reservedSubdomains(): Set<string> {
+    return new Set(
+      ['app', 'api', ...this.splitConfigList(this.config.get<string>('RESERVED_SUBDOMAINS'))].map(
+        (value) => value.toLowerCase(),
+      ),
+    );
+  }
+
+  private splitConfigList(value?: string): string[] {
+    return value
+      ? value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   }
 
   // ── Migration management ─────────────────────────────────────────────────────
