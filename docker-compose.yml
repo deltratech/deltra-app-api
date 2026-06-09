@@ -11,7 +11,7 @@ services:
       - .env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-deltra}?schema=public
+      DATABASE_URL: postgresql://${DB_USER:-deltra}:${DB_PASSWORD:-T9Jq3nBAR79KS7BN27}@postgres:5432/${DB_NAME:-deltra}?schema=public
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,8 +27,8 @@ services:
     container_name: deltra-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${DB_USER:-deltra}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-T9Jq3nBAR79KS7BN27}
       POSTGRES_DB: ${DB_NAME:-deltra}
     ports:
       - "${DB_PORT:-5432}:5432"
