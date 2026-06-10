@@ -1,0 +1,5 @@
+services:
+  api:
+    volumes:
+      - ./prisma:/app/prisma
+      - ./tsconfig.seed.json:/app/tsconfig.seed.json

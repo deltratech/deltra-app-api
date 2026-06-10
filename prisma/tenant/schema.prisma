@@ -258,7 +258,6 @@ enum PeriodKind {
   @@map("period_kind")
 }
 
-
 // ============================================================================
 // IDENTITY & ACCESS
 // ============================================================================
@@ -277,19 +276,20 @@ model User {
   status       UserStatus @default(active)
   lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime   @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt    DateTime?                  @map("deleted_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  studentProfile StudentProfile?
-  teacherProfile TeacherProfile?
-  guardianAccounts Guardian[]
-  attendanceRecords AttendanceRecord[]
-  announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
-  announcementAuditLogs AnnouncementAuditLog[]
+  studentProfile         StudentProfile?
+  teacherProfile         TeacherProfile?
+  guardianAccounts       Guardian[]
+  attendanceRecords      AttendanceRecord[]
+  attendanceRecordsUpdated AttendanceRecord[]     @relation("AttendanceUpdatedBy")
+  announcementsCreated   Announcement[]          @relation("AnnouncementCreatedBy")
+  announcementAuditLogs  AnnouncementAuditLog[]
   announcementRecipients AnnouncementRecipient[]
-  pushDeviceTokens PushDeviceToken[]
+  pushDeviceTokens       PushDeviceToken[]
   notificationRecipients NotificationRecipient[]
-  academicNotesCreated AcademicNote[] @relation("AcademicNoteCreatedBy")
+  academicNotesCreated   AcademicNote[]          @relation("AcademicNoteCreatedBy")
 
   @@map("users")
 }
@@ -301,29 +301,29 @@ model User {
 /// Student-specific data. One-to-one with User where role = student.
 /// tenantId omitted — schema-level isolation already scopes every row to this school.
 model StudentProfile {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String    @unique @map("user_id") @db.Uuid
-  nisn       String?   @unique                      // Nomor Induk Siswa Nasional
-  nik        String?   @unique                      // Nomor Induk Kependudukan
-  birthDate  DateTime?                @map("birth_date")  @db.Date
-  birthPlace String?                  @map("birth_place")
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String        @unique @map("user_id") @db.Uuid
+  nisn       String?       @unique // Nomor Induk Siswa Nasional
+  nik        String?       @unique // Nomor Induk Kependudukan
+  birthDate  DateTime?     @map("birth_date") @db.Date
+  birthPlace String?       @map("birth_place")
   gender     Gender?
   religion   String?
   address    String?
   phone      String?
-  photoUrl   String?                  @map("photo_url")
-  entryYear  Int?                     @map("entry_year")  @db.SmallInt
-  status     StudentStatus            @default(active)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  photoUrl   String?       @map("photo_url")
+  entryYear  Int?          @map("entry_year") @db.SmallInt
+  status     StudentStatus @default(active)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user         User                 @relation(fields: [userId], references: [id])
-  enrollments  Enrollment[]
-  guardians    Guardian[]
-  portfolios   StudentPortfolio[]
-  achievements StudentAchievement[]
-  academicNotes AcademicNote[]
-  attendanceRecords AttendanceRecord[]
+  user                   User                    @relation(fields: [userId], references: [id])
+  enrollments            Enrollment[]
+  guardians              Guardian[]
+  portfolios             StudentPortfolio[]
+  achievements           StudentAchievement[]
+  academicNotes          AcademicNote[]
+  attendanceRecords      AttendanceRecord[]
   announcementRecipients AnnouncementRecipient[]
 
   @@map("student_profiles")
@@ -341,10 +341,10 @@ model Guardian {
   address          String?
   isPrimary        Boolean  @default(false) @map("is_primary")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
-  user           User?          @relation(fields: [userId], references: [id])
+  studentProfile         StudentProfile          @relation(fields: [studentProfileId], references: [id])
+  user                   User?                   @relation(fields: [userId], references: [id])
   announcementRecipients AnnouncementRecipient[]
 
   @@index([userId])
@@ -353,63 +353,63 @@ model Guardian {
 
 /// Teacher-specific data. One-to-one with User where role = teacher.
 model TeacherProfile {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId           String           @unique          @map("user_id")          @db.Uuid
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String            @unique @map("user_id") @db.Uuid
   nuptk            String?
-  nik              String?          @unique
-  birthDate        DateTime?                         @map("birth_date")       @db.Date
-  birthPlace       String?                           @map("birth_place")
+  nik              String?           @unique
+  birthDate        DateTime?         @map("birth_date") @db.Date
+  birthPlace       String?           @map("birth_place")
   gender           Gender?
   religion         String?
   phone            String?
   email            String?
-  employmentStatus EmploymentStatus?                 @map("employment_status")
-  photoUrl         String?                           @map("photo_url")
+  employmentStatus EmploymentStatus? @map("employment_status")
+  photoUrl         String?           @map("photo_url")
   bio              String?
-  status           TeacherStatus    @default(active)
-  createdAt        DateTime         @default(now())  @map("created_at")       @db.Timestamptz(6)
-  updatedAt        DateTime         @updatedAt       @map("updated_at")       @db.Timestamptz(6)
-  deletedAt        DateTime?                         @map("deleted_at")       @db.Timestamptz(6)
+  status           TeacherStatus     @default(active)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?         @map("deleted_at") @db.Timestamptz(6)
 
-  user          User                  @relation(fields: [userId], references: [id])
-  classSubjects ClassSubject[]
-  scheduleEntries ScheduleEntry[]
-  requirements  ScheduleRequirement[]
-  unavailability TeacherUnavailability[]
-  contracts     TeacherContract[]
+  user                User                    @relation(fields: [userId], references: [id])
+  classSubjects       ClassSubject[]
+  scheduleEntries     ScheduleEntry[]
+  requirements        ScheduleRequirement[]
+  unavailability      TeacherUnavailability[]
+  contracts           TeacherContract[]
   homeroomAssignments HomeroomAssignment[]
-  academicNotes AcademicNote[]
+  academicNotes       AcademicNote[]
 
   @@map("teacher_profiles")
 }
 
 model TeacherContract {
-  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  teacherProfileId          String                      @map("teacher_profile_id") @db.Uuid
-  templateId                String?                     @map("template_id") @db.Uuid
-  templateType              TeacherContractTemplateType @map("template_type")
-  status                    TeacherContractStatus       @default(draft)
-  contractStartDate         DateTime                    @map("contract_start_date") @db.Date
-  contractEndDate           DateTime                    @map("contract_end_date") @db.Date
-  employmentStatus          EmploymentStatus?           @map("employment_status")
-  teachingAssignmentNotes   String?                     @map("teaching_assignment_notes")
-  documentTitle             String?                     @map("document_title")
-  fileUrl                   String                      @map("file_url")
-  fileName                  String                      @map("file_name")
-  mimeType                  String                      @map("mime_type")
-  sizeBytes                 Int                         @map("size_bytes")
-  signedAt                  DateTime?                   @map("signed_at") @db.Timestamptz(6)
-  eSignature                String?                     @map("e_signature")
-  notes                     String?
-  renderedContent           String?                     @map("rendered_content")
-  renewalReminderAt         DateTime?                   @map("renewal_reminder_at") @db.Timestamptz(6)
-  createdByUserId           String?                     @map("created_by_user_id") @db.Uuid
-  updatedByUserId           String?                     @map("updated_by_user_id") @db.Uuid
-  createdAt                 DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                 DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt                 DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+  id                      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId        String                      @map("teacher_profile_id") @db.Uuid
+  templateId              String?                     @map("template_id") @db.Uuid
+  templateType            TeacherContractTemplateType @map("template_type")
+  status                  TeacherContractStatus       @default(draft)
+  contractStartDate       DateTime                    @map("contract_start_date") @db.Date
+  contractEndDate         DateTime                    @map("contract_end_date") @db.Date
+  employmentStatus        EmploymentStatus?           @map("employment_status")
+  teachingAssignmentNotes String?                     @map("teaching_assignment_notes")
+  documentTitle           String?                     @map("document_title")
+  fileUrl                 String                      @map("file_url")
+  fileName                String                      @map("file_name")
+  mimeType                String                      @map("mime_type")
+  sizeBytes               Int                         @map("size_bytes")
+  signedAt                DateTime?                   @map("signed_at") @db.Timestamptz(6)
+  eSignature              String?                     @map("e_signature")
+  notes                   String?
+  renderedContent         String?                     @map("rendered_content")
+  renewalReminderAt       DateTime?                   @map("renewal_reminder_at") @db.Timestamptz(6)
+  createdByUserId         String?                     @map("created_by_user_id") @db.Uuid
+  updatedByUserId         String?                     @map("updated_by_user_id") @db.Uuid
+  createdAt               DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt               DateTime?                   @map("deleted_at") @db.Timestamptz(6)
 
-  teacher  TeacherProfile         @relation(fields: [teacherProfileId], references: [id])
+  teacher  TeacherProfile           @relation(fields: [teacherProfileId], references: [id])
   template TeacherContractTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([teacherProfileId])
@@ -420,19 +420,19 @@ model TeacherContract {
 }
 
 model TeacherContractTemplate {
-  id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  templateType TeacherContractTemplateType @map("template_type")
-  variablesJson Json?                      @map("variables_json") @db.JsonB
-  templateFileUrl String?                   @map("template_file_url")
-  templateFileName String?                  @map("template_file_name")
-  templateMimeType String?                  @map("template_mime_type")
-  templateSizeBytes Int?                    @map("template_size_bytes")
-  version      Int                         @default(1)
-  isActive     Boolean                     @default(true) @map("is_active")
-  createdAt    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt    DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  templateType      TeacherContractTemplateType @map("template_type")
+  variablesJson     Json?                       @map("variables_json") @db.JsonB
+  templateFileUrl   String?                     @map("template_file_url")
+  templateFileName  String?                     @map("template_file_name")
+  templateMimeType  String?                     @map("template_mime_type")
+  templateSizeBytes Int?                        @map("template_size_bytes")
+  version           Int                         @default(1)
+  isActive          Boolean                     @default(true) @map("is_active")
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?                   @map("deleted_at") @db.Timestamptz(6)
 
   contracts TeacherContract[]
 
@@ -449,37 +449,38 @@ model Classroom {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name           String
   gradeLevel     Int       @map("grade_level") @db.SmallInt
-  academicYear   String    @map("academic_year")
-  semester       Int       @db.SmallInt
+  academicYearId String    @map("academic_year_id") @db.Uuid
   homeroomUserId String?   @map("homeroom_user_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  enrollments   Enrollment[]
-  classSubjects ClassSubject[]
-  schedules     Schedule[]
-  requirements  ScheduleRequirement[]
+  enrollments         Enrollment[]
+  classSubjects       ClassSubject[]
+  schedules           Schedule[]
+  requirements        ScheduleRequirement[]
   homeroomAssignments HomeroomAssignment[]
-  attendanceRecords AttendanceRecord[]
-  announcements Announcement[]
-  academicNotes AcademicNote[]
+  attendanceRecords   AttendanceRecord[]
+  announcements       Announcement[]
+  academicNotes       AcademicNote[]
+  academicYear        AcademicYear          @relation(fields: [academicYearId], references: [id])
 
-  @@unique([name, academicYear, semester])
+  @@unique([name, academicYearId])
   @@map("classrooms")
 }
 
 model PeriodTemplate {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gradeLevel   Int      @map("grade_level") @db.SmallInt
-  academicYear String   @map("academic_year")
-  dayStart     String   @map("day_start")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gradeLevel     Int      @map("grade_level") @db.SmallInt
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  dayStart       String   @map("day_start")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  rows       PeriodRow[]
+  rows         PeriodRow[]
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
 
-  @@unique([gradeLevel, academicYear])
+  @@unique([gradeLevel, academicYearId])
   @@map("period_templates")
 }
 
@@ -492,8 +493,8 @@ model PeriodRow {
   durationMin Int        @map("duration_min")
   activeDays  Int[]      @default([]) @map("active_days")
 
-  template PeriodTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  entries  ScheduleEntry[]
+  template       PeriodTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  entries        ScheduleEntry[]
   unavailability TeacherUnavailability[]
 
   @@unique([templateId, sortOrder])
@@ -504,8 +505,7 @@ model HomeroomAssignment {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   classroomId      String    @map("classroom_id") @db.Uuid
   teacherProfileId String    @map("teacher_profile_id") @db.Uuid
-  academicYear     String    @map("academic_year")
-  semester         Int       @db.SmallInt
+  academicYearId   String    @map("academic_year_id") @db.Uuid
   isActive         Boolean   @default(true) @map("is_active")
   assignedAt       DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
   endedAt          DateTime? @map("ended_at") @db.Timestamptz(6)
@@ -514,11 +514,12 @@ model HomeroomAssignment {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  classroom Classroom      @relation(fields: [classroomId], references: [id])
-  teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+  classroom    Classroom      @relation(fields: [classroomId], references: [id])
+  teacher      TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+  academicYear AcademicYear   @relation(fields: [academicYearId], references: [id])
 
   @@index([teacherProfileId, isActive])
-  @@index([classroomId, academicYear, semester])
+  @@index([classroomId, academicYearId])
   @@map("homeroom_assignments")
 }
 
@@ -529,27 +530,27 @@ model Subject {
   name        String
   description String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  classSubjects ClassSubject[]
-  portfolios    StudentPortfolio[]
+  classSubjects   ClassSubject[]
+  portfolios      StudentPortfolio[]
   scheduleEntries ScheduleEntry[]
-  requirements  ScheduleRequirement[]
-  academicNotes AcademicNote[]
+  requirements    ScheduleRequirement[]
+  academicNotes   AcademicNote[]
 
   @@map("subjects")
 }
 
 /// Penugasan guru ke kelas + mata pelajaran.
 model ClassSubject {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  classroomId      String         @map("classroom_id")       @db.Uuid
-  subjectId        String         @map("subject_id")         @db.Uuid
-  teacherProfileId String?        @map("teacher_profile_id") @db.Uuid
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId      String  @map("classroom_id") @db.Uuid
+  subjectId        String  @map("subject_id") @db.Uuid
+  teacherProfileId String? @map("teacher_profile_id") @db.Uuid
 
-  classroom Classroom       @relation(fields: [classroomId],      references: [id])
-  subject   Subject         @relation(fields: [subjectId],         references: [id])
+  classroom Classroom       @relation(fields: [classroomId], references: [id])
+  subject   Subject         @relation(fields: [subjectId], references: [id])
   teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
 
   @@unique([classroomId, subjectId])
@@ -560,12 +561,12 @@ model ClassSubject {
 model Enrollment {
   id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   studentProfileId String           @map("student_profile_id") @db.Uuid
-  classroomId      String           @map("classroom_id")       @db.Uuid
+  classroomId      String           @map("classroom_id") @db.Uuid
   enrolledAt       DateTime         @default(now()) @map("enrolled_at") @db.Timestamptz(6)
   status           EnrollmentStatus @default(active)
 
   studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
-  classroom      Classroom      @relation(fields: [classroomId],      references: [id])
+  classroom      Classroom      @relation(fields: [classroomId], references: [id])
 
   @@unique([studentProfileId, classroomId])
   @@map("enrollments")
@@ -574,22 +575,30 @@ model Enrollment {
 model AttendanceRecord {
   id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   studentProfileId String           @map("student_profile_id") @db.Uuid
+  academicYearId   String           @map("academic_year_id") @db.Uuid
   classroomId      String           @map("classroom_id") @db.Uuid
+  scheduleEntryId  String?          @map("schedule_entry_id") @db.Uuid
   attendanceDate   DateTime         @map("attendance_date") @db.Date
   status           AttendanceStatus
+  lateMinutes      Int?             @map("late_minutes")
   notes            String?
   markedByUserId   String?          @map("marked_by_user_id") @db.Uuid
+  updatedByUserId  String?          @map("updated_by_user_id") @db.Uuid
+  updateReason     String?          @map("update_reason")
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
 
   studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
   classroom      Classroom      @relation(fields: [classroomId], references: [id])
+  scheduleEntry  ScheduleEntry? @relation(fields: [scheduleEntryId], references: [id])
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
   markedBy       User?          @relation(fields: [markedByUserId], references: [id])
+  updatedBy      User?          @relation("AttendanceUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  @@unique([studentProfileId, classroomId, attendanceDate])
+  @@unique([studentProfileId, attendanceDate, scheduleEntryId])
   @@index([classroomId, attendanceDate])
-  @@index([studentProfileId, attendanceDate])
+  @@index([studentProfileId, academicYearId])
   @@map("attendance_records")
 }
 
@@ -606,12 +615,12 @@ model StudentPortfolio {
   description      String?
   subjectId        String?       @map("subject_id") @db.Uuid
   startDate        DateTime?     @map("start_date") @db.Date
-  endDate          DateTime?     @map("end_date")   @db.Date
-  createdAt        DateTime      @default(now())    @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime      @updatedAt         @map("updated_at") @db.Timestamptz(6)
+  endDate          DateTime?     @map("end_date") @db.Date
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  studentProfile StudentProfile       @relation(fields: [studentProfileId], references: [id])
-  subject        Subject?             @relation(fields: [subjectId],        references: [id])
+  studentProfile StudentProfile        @relation(fields: [studentProfileId], references: [id])
+  subject        Subject?              @relation(fields: [subjectId], references: [id])
   attachments    PortfolioAttachment[]
 
   @@map("student_portfolios")
@@ -644,7 +653,7 @@ model StudentAchievement {
   achievedAt       DateTime            @map("achieved_at") @db.Date
   rank             String?
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime            @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   studentProfile StudentProfile          @relation(fields: [studentProfileId], references: [id])
   attachments    AchievementAttachment[]
@@ -709,11 +718,11 @@ model Room {
   capacity    Int?
   description String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   scheduleEntries ScheduleEntry[]
-  requirements ScheduleRequirement[]
+  requirements    ScheduleRequirement[]
 
   @@map("rooms")
 }
@@ -723,8 +732,7 @@ model Room {
 model Schedule {
   id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   classroomId          String         @map("classroom_id") @db.Uuid
-  academicYear         String         @map("academic_year")
-  semester             Int            @db.SmallInt
+  academicYearId       String         @map("academic_year_id") @db.Uuid
   status               ScheduleStatus @default(draft)
   publishedAt          DateTime?      @map("published_at") @db.Timestamptz(6)
   archivedAt           DateTime?      @map("archived_at") @db.Timestamptz(6)
@@ -733,26 +741,27 @@ model Schedule {
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz(6)
 
-  classroom Classroom @relation(fields: [classroomId], references: [id])
-  copiedFrom Schedule? @relation("CopiedSchedule", fields: [copiedFromScheduleId], references: [id])
-  copies     Schedule[] @relation("CopiedSchedule")
-  entries    ScheduleEntry[]
+  classroom    Classroom       @relation(fields: [classroomId], references: [id])
+  copiedFrom   Schedule?       @relation("CopiedSchedule", fields: [copiedFromScheduleId], references: [id])
+  copies       Schedule[]      @relation("CopiedSchedule")
+  entries      ScheduleEntry[]
+  academicYear AcademicYear    @relation(fields: [academicYearId], references: [id])
 
-  @@unique([classroomId, academicYear, semester])
+  @@unique([classroomId, academicYearId])
   @@map("schedules")
 }
 
 model ScheduleEntry {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  scheduleId       String   @map("schedule_id") @db.Uuid
-  subjectId        String   @map("subject_id") @db.Uuid
-  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
-  roomId           String   @map("room_id") @db.Uuid
-  dayOfWeek        Int?     @map("day_of_week") @db.SmallInt
-  periodRowId      String?  @map("period_row_id") @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scheduleId       String    @map("schedule_id") @db.Uuid
+  subjectId        String    @map("subject_id") @db.Uuid
+  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
+  roomId           String    @map("room_id") @db.Uuid
+  dayOfWeek        Int?      @map("day_of_week") @db.SmallInt
+  periodRowId      String?   @map("period_row_id") @db.Uuid
   notes            String?
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   schedule  Schedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
@@ -760,6 +769,7 @@ model ScheduleEntry {
   teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
   room      Room           @relation(fields: [roomId], references: [id])
   periodRow PeriodRow?     @relation(fields: [periodRowId], references: [id])
+  attendanceRecords AttendanceRecord[]
 
   @@index([teacherProfileId, dayOfWeek, periodRowId])
   @@index([roomId, dayOfWeek, periodRowId])
@@ -774,36 +784,36 @@ model ScheduleEntry {
 /// This is the input consumed by the greedy auto-scheduler.
 model ScheduleRequirement {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  classroomId      String   @map("classroom_id")       @db.Uuid
-  subjectId        String   @map("subject_id")         @db.Uuid
+  classroomId      String   @map("classroom_id") @db.Uuid
+  subjectId        String   @map("subject_id") @db.Uuid
   teacherProfileId String?  @map("teacher_profile_id") @db.Uuid
-  roomId           String?  @map("room_id")            @db.Uuid
-  sessionsPerWeek  Int      @map("sessions_per_week")  @db.SmallInt
-  academicYear     String   @map("academic_year")
-  semester         Int      @db.SmallInt
+  roomId           String?  @map("room_id") @db.Uuid
+  sessionsPerWeek  Int      @map("sessions_per_week") @db.SmallInt
+  academicYearId   String   @map("academic_year_id") @db.Uuid
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  classroom Classroom       @relation(fields: [classroomId],      references: [id])
-  subject   Subject         @relation(fields: [subjectId],        references: [id])
-  teacher   TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
-  room      Room?           @relation(fields: [roomId],           references: [id])
+  classroom    Classroom       @relation(fields: [classroomId], references: [id])
+  subject      Subject         @relation(fields: [subjectId], references: [id])
+  teacher      TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+  room         Room?           @relation(fields: [roomId], references: [id])
+  academicYear AcademicYear    @relation(fields: [academicYearId], references: [id])
 
-  @@unique([classroomId, subjectId, academicYear, semester])
+  @@unique([classroomId, subjectId, academicYearId], map: "schedule_requirements_class_subject_year_key")
   @@map("schedule_requirements")
 }
 
 /// Teacher unavailability — slots where teacher CANNOT be assigned.
 model TeacherUnavailability {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
-  dayOfWeek        Int       @map("day_of_week") @db.SmallInt
-  periodRowId      String    @map("period_row_id") @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
+  dayOfWeek        Int      @map("day_of_week") @db.SmallInt
+  periodRowId      String   @map("period_row_id") @db.Uuid
   reason           String?
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  teacher  TeacherProfile @relation(fields: [teacherProfileId], references: [id])
-  periodRow PeriodRow     @relation(fields: [periodRowId], references: [id])
+  teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
+  periodRow PeriodRow      @relation(fields: [periodRowId], references: [id])
 
   @@unique([teacherProfileId, dayOfWeek, periodRowId])
   @@map("teacher_unavailability")
@@ -814,28 +824,28 @@ model TeacherUnavailability {
 // ============================================================================
 
 model Announcement {
-  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title              String
-  body               String
-  audienceType       AnnouncementAudienceType @map("audience_type")
-  targetGradeLevel   Int?                     @map("target_grade_level") @db.SmallInt
-  targetClassroomId  String?                  @map("target_classroom_id") @db.Uuid
-  channels           AnnouncementChannel[]    @default([])
-  status             AnnouncementStatus       @default(draft)
-  scheduledAt        DateTime?                @map("scheduled_at") @db.Timestamptz(6)
-  sentAt             DateTime?                @map("sent_at") @db.Timestamptz(6)
-  pinned             Boolean                  @default(false)
-  createdByUserId    String                   @map("created_by_user_id") @db.Uuid
-  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt          DateTime?                @map("deleted_at") @db.Timestamptz(6)
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title             String
+  body              String
+  audienceType      AnnouncementAudienceType @map("audience_type")
+  targetGradeLevel  Int?                     @map("target_grade_level") @db.SmallInt
+  targetClassroomId String?                  @map("target_classroom_id") @db.Uuid
+  channels          AnnouncementChannel[]    @default([])
+  status            AnnouncementStatus       @default(draft)
+  scheduledAt       DateTime?                @map("scheduled_at") @db.Timestamptz(6)
+  sentAt            DateTime?                @map("sent_at") @db.Timestamptz(6)
+  pinned            Boolean                  @default(false)
+  createdByUserId   String                   @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?                @map("deleted_at") @db.Timestamptz(6)
 
-  targetClassroom Classroom? @relation(fields: [targetClassroomId], references: [id])
-  createdBy       User       @relation("AnnouncementCreatedBy", fields: [createdByUserId], references: [id])
-  attachments     AnnouncementAttachment[]
-  recipients      AnnouncementRecipient[]
-  deliveryLogs    AnnouncementDeliveryLog[]
-  auditLogs       AnnouncementAuditLog[]
+  targetClassroom    Classroom?                @relation(fields: [targetClassroomId], references: [id])
+  createdBy          User                      @relation("AnnouncementCreatedBy", fields: [createdByUserId], references: [id])
+  attachments        AnnouncementAttachment[]
+  recipients         AnnouncementRecipient[]
+  deliveryLogs       AnnouncementDeliveryLog[]
+  auditLogs          AnnouncementAuditLog[]
   notificationEvents NotificationEvent[]
 
   @@index([audienceType, targetGradeLevel])
@@ -872,10 +882,10 @@ model AnnouncementRecipient {
   readAt           DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  announcement   Announcement   @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
-  guardian       Guardian?      @relation(fields: [guardianId], references: [id])
-  user           User?          @relation(fields: [userId], references: [id])
+  announcement   Announcement              @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  studentProfile StudentProfile            @relation(fields: [studentProfileId], references: [id])
+  guardian       Guardian?                 @relation(fields: [guardianId], references: [id])
+  user           User?                     @relation(fields: [userId], references: [id])
   deliveryLogs   AnnouncementDeliveryLog[]
 
   @@unique([announcementId, recipientKey])
@@ -958,20 +968,20 @@ model PushDeviceToken {
 }
 
 model NotificationEvent {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  announcementId String?   @map("announcement_id") @db.Uuid
-  category       NotificationCategory @default(system)
-  eventType      String               @map("event_type")
-  priority       NotificationPriority @default(normal)
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId String?                 @map("announcement_id") @db.Uuid
+  category       NotificationCategory    @default(system)
+  eventType      String                  @map("event_type")
+  priority       NotificationPriority    @default(normal)
   sourceType     NotificationSourceType? @map("source_type")
-  sourceId       String?              @map("source_id") @db.Uuid
+  sourceId       String?                 @map("source_id") @db.Uuid
   title          String
   body           String
-  data           Json?     @db.JsonB
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  data           Json?                   @db.JsonB
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  announcement Announcement? @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  announcement Announcement?           @relation(fields: [announcementId], references: [id], onDelete: SetNull)
   recipients   NotificationRecipient[]
 
   @@unique([eventType, sourceType, sourceId])
@@ -989,8 +999,8 @@ model NotificationRecipient {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  event        NotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user         User              @relation(fields: [userId], references: [id])
+  event        NotificationEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User                      @relation(fields: [userId], references: [id])
   deliveryLogs NotificationDeliveryLog[]
 
   @@unique([eventId, userId])
@@ -1011,10 +1021,31 @@ model NotificationDeliveryLog {
   updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   recipient       NotificationRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
-  pushDeviceToken PushDeviceToken @relation(fields: [pushDeviceTokenId], references: [id], onDelete: Cascade)
+  pushDeviceToken PushDeviceToken       @relation(fields: [pushDeviceTokenId], references: [id], onDelete: Cascade)
 
   @@unique([recipientId, pushDeviceTokenId])
   @@index([status, createdAt])
   @@index([recipientId])
   @@map("notification_delivery_logs")
+}
+
+model AcademicYear {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  label     String // '2025/2026'
+  semester  Int      @db.SmallInt
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  classrooms           Classroom[]
+  attendanceRecords    AttendanceRecord[]
+  periodTemplates      PeriodTemplate[]
+  homeroomAssignments  HomeroomAssignment[]
+  schedules            Schedule[]
+  scheduleRequirements ScheduleRequirement[]
+
+  @@unique([label, semester])
+  @@map("academic_years")
 }

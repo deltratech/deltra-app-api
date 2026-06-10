@@ -48,24 +48,71 @@ function toTime(minutes: number) {
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
+async function ensureSingleActiveEnrollment(
+  studentProfileId: string,
+  classroomId: string,
+  academicYearId: string,
+) {
+  await prisma.enrollment.updateMany({
+    where: {
+      studentProfileId,
+      status: 'active',
+      classroomId: { not: classroomId },
+      classroom: { academicYearId },
+    },
+    data: { status: 'transferred' },
+  });
+
+  const existing = await prisma.enrollment.findUnique({
+    where: { studentProfileId_classroomId: { studentProfileId, classroomId } },
+  });
+
+  if (existing) {
+    if (existing.status !== 'active') {
+      await prisma.enrollment.update({
+        where: { id: existing.id },
+        data: { status: 'active' },
+      });
+    }
+    return;
+  }
+
+  await prisma.enrollment.create({
+    data: { studentProfileId, classroomId, status: 'active' },
+  });
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   const PASSWORD_HASH = await bcrypt.hash('password123', 10);
+  const academicYear = await prisma.academicYear.upsert({
+    where: { label_semester: { label: '2025/2026', semester: 1 } },
+    create: {
+      label: '2025/2026',
+      semester: 1,
+      startDate: new Date('2025-07-14'),
+      endDate: new Date('2025-12-20'),
+      isActive: true,
+    },
+    update: {
+      isActive: true,
+    },
+  });
 
   // ── 1. Classroom ─────────────────────────────────────────────────────────────
 
   log('Upserting classroom...');
 
   const classroom = await prisma.classroom.upsert({
-    where: { name_academicYear_semester: { name: 'X IPA 1', academicYear: '2025/2026', semester: 1 } },
-    create: { name: 'X IPA 1', gradeLevel: 10, academicYear: '2025/2026', semester: 1 },
+    where: { name_academicYearId: { name: 'X IPA 1', academicYearId: academicYear.id } },
+    create: { name: 'X IPA 1', gradeLevel: 10, academicYearId: academicYear.id },
     update: {},
   });
 
   const classroom2 = await prisma.classroom.upsert({
-    where: { name_academicYear_semester: { name: 'X IPA 2', academicYear: '2025/2026', semester: 1 } },
-    create: { name: 'X IPA 2', gradeLevel: 10, academicYear: '2025/2026', semester: 1 },
+    where: { name_academicYearId: { name: 'X IPA 2', academicYearId: academicYear.id } },
+    create: { name: 'X IPA 2', gradeLevel: 10, academicYearId: academicYear.id },
     update: {},
   });
 
@@ -204,8 +251,7 @@ async function main() {
       data: {
         classroomId: classroom.id,
         teacherProfileId: teacherProfiles[0].id,
-        academicYear: '2025/2026',
-        semester: 1,
+        academicYearId: academicYear.id,
         notes: 'Wali kelas dummy seed',
       },
     });
@@ -358,14 +404,7 @@ async function main() {
     }
 
     // Enrollment
-    const enrolled = await prisma.enrollment.findUnique({
-      where: { studentProfileId_classroomId: { studentProfileId: profile.id, classroomId: classroom.id } },
-    });
-    if (!enrolled) {
-      await prisma.enrollment.create({
-        data: { studentProfileId: profile.id, classroomId: classroom.id, status: 'active' },
-      });
-    }
+    await ensureSingleActiveEnrollment(profile.id, classroom.id, academicYear.id);
 
     studentProfiles.push({ id: profile.id, userId: user.id, fullName: s.fullName });
     log(`  student: ${s.fullName}`);
@@ -574,14 +613,14 @@ async function main() {
 
   const periodTemplate = await prisma.periodTemplate.upsert({
     where: {
-      gradeLevel_academicYear: {
+      gradeLevel_academicYearId: {
         gradeLevel: 10,
-        academicYear: '2025/2026',
+        academicYearId: academicYear.id,
       },
     },
     create: {
       gradeLevel: 10,
-      academicYear: '2025/2026',
+      academicYearId: academicYear.id,
       dayStart: '07:00',
     },
     update: {
@@ -670,11 +709,10 @@ async function main() {
   for (const req of requirementSeed) {
     await prisma.scheduleRequirement.upsert({
       where: {
-        classroomId_subjectId_academicYear_semester: {
+        classroomId_subjectId_academicYearId: {
           classroomId: req.classroomId,
           subjectId: subjects[req.subjectCode].id,
-          academicYear: '2025/2026',
-          semester: 1,
+          academicYearId: academicYear.id,
         },
       },
       create: {
@@ -683,8 +721,7 @@ async function main() {
         teacherProfileId: req.teacherProfileId,
         roomId: req.roomId,
         sessionsPerWeek: req.sessionsPerWeek,
-        academicYear: '2025/2026',
-        semester: 1,
+        academicYearId: academicYear.id,
       },
       update: {
         teacherProfileId: req.teacherProfileId,
@@ -701,16 +738,14 @@ async function main() {
 
   const schedule = await prisma.schedule.upsert({
     where: {
-      classroomId_academicYear_semester: {
+      classroomId_academicYearId: {
         classroomId: classroom.id,
-        academicYear: '2025/2026',
-        semester: 1,
+        academicYearId: academicYear.id,
       },
     },
     create: {
       classroomId: classroom.id,
-      academicYear: '2025/2026',
-      semester: 1,
+      academicYearId: academicYear.id,
       status: 'draft',
     },
     update: {
@@ -781,16 +816,14 @@ async function main() {
 
   const publishedSchedule = await prisma.schedule.upsert({
     where: {
-      classroomId_academicYear_semester: {
+      classroomId_academicYearId: {
         classroomId: classroom2.id,
-        academicYear: '2025/2026',
-        semester: 1,
+        academicYearId: academicYear.id,
       },
     },
     create: {
       classroomId: classroom2.id,
-      academicYear: '2025/2026',
-      semester: 1,
+      academicYearId: academicYear.id,
       status: 'published',
       publishedAt: new Date(),
     },

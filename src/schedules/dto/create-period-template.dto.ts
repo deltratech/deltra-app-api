@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsString, Matches, Min } from 'class-validator';
+import { IsInt, IsString, IsUUID, Matches, Min } from 'class-validator';
 
 export class CreatePeriodTemplateDto {
   @ApiProperty({ example: 10 })
@@ -7,10 +7,9 @@ export class CreatePeriodTemplateDto {
   @Min(1)
   gradeLevel: number;
 
-  @ApiProperty({ example: '2025/2026' })
-  @IsString()
-  @IsNotEmpty()
-  academicYear: string;
+  @ApiProperty({ description: 'Academic year ID' })
+  @IsUUID()
+  academicYearId: string;
 
   @ApiProperty({ example: '07:00' })
   @IsString()
