@@ -1,6 +1,8 @@
 node_modules
 dist
 generated
+ .DS_Store
+
 
 # Keep environment variables out of version control
 .env
@@ -8,3 +10,4 @@ generated
 # Firebase service account credentials
 *-firebase-adminsdk-*.json
 platform-notifications-9c840-firebase-adminsdk-fbsvc-38ffee63b9.json
+
