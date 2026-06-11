@@ -110,17 +110,19 @@ enum TeacherContractStatus {
 /// Categories of official school documents (SK / Surat). Workflow rules per
 /// category live in code (document-categories.ts), not in the DB.
 enum DocumentCategory {
+  kontrak_guru_pkwt
+  kontrak_staff
+  pkwtt
+  perpanjangan_kontrak
   sk_tugas_mengajar
   sk_wali_kelas
-  sk_pembina_ekskul
   sk_wakasek
-  sk_koordinator
+  sk_koordinator_kurikulum
   sk_kepala_sekolah
   sk_guru_tetap
   sk_guru_kontrak
-  surat_tugas
-  surat_mutasi
-  surat_keterangan_kerja
+  sk_staff_tetap
+  sk_staff_kontrak
 
   @@map("document_category")
 }
@@ -306,6 +308,7 @@ model User {
   pushDeviceTokens PushDeviceToken[]
   notificationRecipients NotificationRecipient[]
   academicNotesCreated AcademicNote[] @relation("AcademicNoteCreatedBy")
+  receivedContracts TeacherContract[] @relation("ContractRecipient")
 
   @@map("users")
 }
@@ -401,7 +404,8 @@ model TeacherProfile {
 
 model TeacherContract {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  teacherProfileId          String                      @map("teacher_profile_id") @db.Uuid
+  teacherProfileId          String?                     @map("teacher_profile_id") @db.Uuid
+  recipientUserId           String?                     @map("recipient_user_id") @db.Uuid
   templateId                String?                     @map("template_id") @db.Uuid
   category                  DocumentCategory?
   recipientType             String?                     @map("recipient_type")
@@ -409,7 +413,7 @@ model TeacherContract {
   signaturesJson            Json?                       @map("signatures_json") @db.JsonB
   status                    TeacherContractStatus       @default(draft)
   contractStartDate         DateTime                    @map("contract_start_date") @db.Date
-  contractEndDate           DateTime                    @map("contract_end_date") @db.Date
+  contractEndDate           DateTime?                   @map("contract_end_date") @db.Date
   employmentStatus          EmploymentStatus?           @map("employment_status")
   teachingAssignmentNotes   String?                     @map("teaching_assignment_notes")
   documentTitle             String?                     @map("document_title")
@@ -434,10 +438,12 @@ model TeacherContract {
   updatedAt                 DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt                 DateTime?                   @map("deleted_at") @db.Timestamptz(6)
 
-  teacher  TeacherProfile         @relation(fields: [teacherProfileId], references: [id])
+  teacher  TeacherProfile?        @relation(fields: [teacherProfileId], references: [id])
+  recipientUser User?             @relation("ContractRecipient", fields: [recipientUserId], references: [id])
   template TeacherContractTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([teacherProfileId])
+  @@index([recipientUserId])
   @@index([status])
   @@index([category])
   @@index([contractStartDate, contractEndDate])
@@ -1045,4 +1051,284 @@ model NotificationDeliveryLog {
   @@index([status, createdAt])
   @@index([recipientId])
   @@map("notification_delivery_logs")
+}
+
+// ───────────────────────────── Admissions / PPDB ─────────────────────────────
+
+enum AdmissionSchoolLevel {
+  preschool
+  primary
+  secondary
+
+  @@map("admission_school_level")
+}
+
+enum AdmissionStudentCategory {
+  kf_student
+  non_kf
+  not_applicable
+
+  @@map("admission_student_category")
+}
+
+enum AdmissionKfStatusSource {
+  system_derived
+  manual_verified
+  unverified
+  not_applicable
+
+  @@map("admission_kf_status_source")
+}
+
+/// Application workflow stage. Pre-school skips kf/test/offer stages (applied → accepted).
+enum AdmissionStage {
+  applied
+  kf_pending
+  document_review
+  tested
+  passed
+  failed
+  offer_pending
+  accepted
+  enrolled
+  rejected
+
+  @@map("admission_stage")
+}
+
+enum AdmissionDocStatus {
+  pending
+  verified
+  rejected
+
+  @@map("admission_doc_status")
+}
+
+enum AdmissionDocType {
+  kf_proof
+  birth_certificate
+  family_card
+  photo
+  test_result
+  other
+
+  @@map("admission_doc_type")
+}
+
+/// A PPDB applicant within this branch (tenant). Drives the admissions pipeline.
+model AdmissionApplication {
+  id             String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationNo  String?                  @map("application_no")
+  applicantName  String                   @map("applicant_name")
+  applicantNik   String?                  @map("applicant_nik")
+  birthDate      DateTime?                @map("birth_date") @db.Date
+  gender         Gender?
+  guardianName   String?                  @map("guardian_name")
+  guardianPhone  String?                  @map("guardian_phone")
+  guardianEmail  String?                  @map("guardian_email")
+
+  schoolLevel    AdmissionSchoolLevel     @map("school_level")
+  gradeLabel     String                   @map("grade_label")           // e.g. "Grade 7", "K1"
+  academicYear   String                   @map("academic_year")         // e.g. "2026-2027"
+
+  studentCategory AdmissionStudentCategory @default(not_applicable) @map("student_category")
+  kfStatusSource  AdmissionKfStatusSource  @default(not_applicable) @map("kf_status_source")
+
+  stage          AdmissionStage           @default(applied)
+  testDate       DateTime?                @map("test_date") @db.Date
+  testScore      Int?                     @map("test_score") @db.SmallInt
+  resultDate     DateTime?                @map("result_date") @db.Date
+  resultNotes    String?                  @map("result_notes")
+
+  enrolledAt        DateTime?             @map("enrolled_at") @db.Timestamptz(6)
+  studentProfileId  String?               @map("student_profile_id") @db.Uuid
+
+  publicToken          String?            @unique @map("public_token")  // parent tracking link
+  trackingCode         String?            @map("tracking_code")          // short access code for lookup-by-number
+  selectedDevFeeTierId String?            @map("selected_dev_fee_tier_id") @db.Uuid
+  formDataJson         Json?              @map("form_data_json")         // custom form-field answers
+
+  notes          String?
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?                @map("deleted_at") @db.Timestamptz(6)
+
+  documents      AdmissionDocument[]
+  invoices       AdmissionInvoice[]
+
+  @@index([stage])
+  @@index([academicYear, schoolLevel])
+  @@map("admission_applications")
+}
+
+/// A document attached to an application (bukti lampiran / KK / akte / test result).
+model AdmissionDocument {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String             @map("application_id") @db.Uuid
+  documentType  AdmissionDocType   @map("document_type")
+  requirementKey String?           @map("requirement_key")  // matches a form required-document key
+  label         String?                                     // display label for the requirement
+  fileUrl       String             @map("file_url")
+  fileName      String             @map("file_name")
+  status        AdmissionDocStatus @default(pending)
+  notes         String?
+  verifiedById  String?            @map("verified_by_id") @db.Uuid
+  verifiedAt    DateTime?          @map("verified_at") @db.Timestamptz(6)
+  uploadedAt    DateTime           @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  application   AdmissionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("admission_documents")
+}
+
+// ───────────────────────── Admissions — Fees & Invoices ─────────────────────────
+
+enum AdmissionFeeType {
+  application
+  test
+  psychotest
+  registration
+  admission
+  development
+  tuition
+  activities
+  books
+  uniform
+  other
+
+  @@map("admission_fee_type")
+}
+
+enum AdmissionPaymentTerm {
+  one_time
+  upon_registration
+  upon_admission
+  monthly
+  per_term
+  per_semester
+  yearly
+
+  @@map("admission_payment_term")
+}
+
+enum AdmissionInvoiceStatus {
+  draft
+  sent
+  paid
+  overdue
+  cancelled
+
+  @@map("admission_invoice_status")
+}
+
+/// Central per-grade / flat fee pricing for this branch + academic year.
+model AdmissionFeeSchedule {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolLevel     AdmissionSchoolLevel      @map("school_level")
+  gradeLabel      String?                   @map("grade_label")        // null = applies to all grades in level
+  studentCategory AdmissionStudentCategory? @map("student_category")   // null = all categories
+  feeType         AdmissionFeeType          @map("fee_type")
+  academicYear    String                    @map("academic_year")
+  amount          Int                                                  // IDR (integer)
+  paymentTerm     AdmissionPaymentTerm      @default(one_time) @map("payment_term")
+  label           String?
+  notes           String?
+  isActive        Boolean                   @default(true) @map("is_active")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([academicYear, schoolLevel])
+  @@map("admission_fee_schedules")
+}
+
+/// Duration-based development-fee packages (primary & secondary).
+model AdmissionDevelopmentFeeTier {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolLevel     AdmissionSchoolLevel      @map("school_level")
+  studentCategory AdmissionStudentCategory? @map("student_category")   // null = all categories
+  durationLabel   String                    @map("duration_label")     // e.g. "Gr 7–12 (6 yrs)"
+  gradeFromLabel  String                    @map("grade_from_label")   // entry grade this tier applies to
+  gradeToLabel    String?                   @map("grade_to_label")
+  amount          Int                                                  // IDR
+  paymentTerm     AdmissionPaymentTerm      @default(upon_registration) @map("payment_term")
+  academicYear    String                    @map("academic_year")
+  isActive        Boolean                   @default(true) @map("is_active")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([academicYear, schoolLevel])
+  @@map("admission_development_fee_tiers")
+}
+
+/// An invoice issued against an application (test/admission/dev/tuition fees).
+model AdmissionInvoice {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String                  @map("application_id") @db.Uuid
+  invoiceNo     String                  @map("invoice_no")
+  status        AdmissionInvoiceStatus  @default(draft)
+  dueDate       DateTime?               @map("due_date") @db.Date
+  totalAmount   Int                     @map("total_amount")
+  paidAmount    Int                     @default(0) @map("paid_amount")
+  paymentClaimedAt DateTime?            @map("payment_claimed_at") @db.Timestamptz(6)  // parent reported payment
+  notes         String?
+  issuedAt      DateTime                @default(now()) @map("issued_at") @db.Timestamptz(6)
+  paidAt        DateTime?               @map("paid_at") @db.Timestamptz(6)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?               @map("deleted_at") @db.Timestamptz(6)
+
+  application AdmissionApplication      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  items       AdmissionInvoiceItem[]
+
+  @@index([applicationId])
+  @@map("admission_invoices")
+}
+
+model AdmissionInvoiceItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId     String   @map("invoice_id") @db.Uuid
+  description   String
+  amount        Int
+  feeType       AdmissionFeeType? @map("fee_type")
+  periodLabel   String?  @map("period_label")
+  feeScheduleId String?  @map("fee_schedule_id") @db.Uuid
+  devFeeTierId  String?  @map("dev_fee_tier_id") @db.Uuid
+
+  invoice AdmissionInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("admission_invoice_items")
+}
+
+/// A public PPDB registration form (one shareable link per academic year).
+model PpdbForm {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token        String    @unique
+  academicYear String    @map("academic_year")
+  title        String
+  isOpen       Boolean   @default(true) @map("is_open")
+  fieldsJson            Json @default("[]") @map("fields_json")             // applicant-info field definitions
+  requiredDocumentsJson Json @default("[]") @map("required_documents_json") // document checklist
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@map("ppdb_forms")
+}
+
+/// Per-school-level admission settings (test gate, cut-off, available grades).
+/// One row per school level (center = tenant, so these are this center's settings).
+model AdmissionLevelSetting {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolLevel      AdmissionSchoolLevel @unique @map("school_level")
+  hasTestGate      Boolean              @default(true) @map("has_test_gate")
+  enrollmentCutoff DateTime?            @map("enrollment_cutoff") @db.Date
+  gradeLabels      Json                 @default("[]") @map("grade_labels")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("admission_level_settings")
 }

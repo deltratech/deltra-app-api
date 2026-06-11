@@ -9,22 +9,26 @@ import { UserRole } from '../common/enums/user-role.enum';
  */
 
 export enum DocumentCategory {
-  // Teaching assignment letters
-  sk_tugas_mengajar = 'sk_tugas_mengajar',
-  sk_wali_kelas = 'sk_wali_kelas',
-  sk_pembina_ekskul = 'sk_pembina_ekskul',
-  // Position appointment letters
-  sk_wakasek = 'sk_wakasek',
-  sk_koordinator = 'sk_koordinator',
-  sk_kepala_sekolah = 'sk_kepala_sekolah',
+  // Employment contracts
+  kontrak_guru_pkwt = 'kontrak_guru_pkwt',
+  kontrak_staff = 'kontrak_staff',
+  pkwtt = 'pkwtt',
+  perpanjangan_kontrak = 'perpanjangan_kontrak',
   // Employment appointment letters
   sk_guru_tetap = 'sk_guru_tetap',
   sk_guru_kontrak = 'sk_guru_kontrak',
-  // General letters
-  surat_tugas = 'surat_tugas',
-  surat_mutasi = 'surat_mutasi',
-  surat_keterangan_kerja = 'surat_keterangan_kerja',
+  sk_staff_tetap = 'sk_staff_tetap',
+  sk_staff_kontrak = 'sk_staff_kontrak',
+  // Position assignment letters
+  sk_kepala_sekolah = 'sk_kepala_sekolah',
+  sk_wakasek = 'sk_wakasek',
+  sk_koordinator_kurikulum = 'sk_koordinator_kurikulum',
+  // Teaching assignment letters
+  sk_tugas_mengajar = 'sk_tugas_mengajar',
+  sk_wali_kelas = 'sk_wali_kelas',
 }
+
+export type DocumentGroup = 'employment_contract' | 'employment_appointment' | 'position_assignment' | 'teaching_assignment';
 
 export type RecipientType = 'teacher' | 'staff' | 'principal';
 
@@ -39,6 +43,7 @@ export type DocumentSideEffect =
 
 export interface CategoryConfig {
   label: string;
+  group: DocumentGroup;
   recipientType: RecipientType;
   creatorRoles: UserRole[];
   approverRole: UserRole;
@@ -53,9 +58,119 @@ const PRINCIPAL = UserRole.principal;
 const YAYASAN = UserRole.network_admin; // Ketua Yayasan / foundation level
 
 export const DOCUMENT_CATEGORIES: Record<DocumentCategory, CategoryConfig> = {
-  // ── Principal-signed (Phase 1, enabled) ──────────────────────────────────────
+  [DocumentCategory.kontrak_guru_pkwt]: {
+    label: 'Kontrak Guru (PKWT)',
+    group: 'employment_contract',
+    recipientType: 'teacher',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'none',
+    enabled: true,
+  },
+  [DocumentCategory.kontrak_staff]: {
+    label: 'Kontrak Staff',
+    group: 'employment_contract',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'none',
+    enabled: true,
+  },
+  [DocumentCategory.pkwtt]: {
+    label: 'PKWTT',
+    group: 'employment_contract',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'none',
+    enabled: true,
+  },
+  [DocumentCategory.perpanjangan_kontrak]: {
+    label: 'Perpanjangan Kontrak',
+    group: 'employment_contract',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'none',
+    enabled: true,
+  },
+  [DocumentCategory.sk_guru_tetap]: {
+    label: 'SK Guru Tetap',
+    group: 'employment_appointment',
+    recipientType: 'teacher',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'employment_status',
+    enabled: true,
+  },
+  [DocumentCategory.sk_guru_kontrak]: {
+    label: 'SK Guru Kontrak',
+    group: 'employment_appointment',
+    recipientType: 'teacher',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'employment_status',
+    enabled: true,
+  },
+  [DocumentCategory.sk_staff_tetap]: {
+    label: 'SK Staff Tetap',
+    group: 'employment_appointment',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'employment_status',
+    enabled: true,
+  },
+  [DocumentCategory.sk_staff_kontrak]: {
+    label: 'SK Staff Kontrak',
+    group: 'employment_appointment',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'employment_status',
+    enabled: true,
+  },
+  [DocumentCategory.sk_kepala_sekolah]: {
+    label: 'SK Kepala Sekolah',
+    group: 'position_assignment',
+    recipientType: 'principal',
+    creatorRoles: [SCHOOL_ADMIN, YAYASAN],
+    approverRole: YAYASAN,
+    signerRole: YAYASAN,
+    sideEffect: 'position',
+    enabled: true,
+  },
+  [DocumentCategory.sk_wakasek]: {
+    label: 'SK Wakil Kepala Sekolah',
+    group: 'position_assignment',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: PRINCIPAL,
+    signerRole: PRINCIPAL,
+    sideEffect: 'position',
+    enabled: true,
+  },
+  [DocumentCategory.sk_koordinator_kurikulum]: {
+    label: 'SK Koordinator Kurikulum',
+    group: 'position_assignment',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: PRINCIPAL,
+    signerRole: PRINCIPAL,
+    sideEffect: 'position',
+    enabled: true,
+  },
   [DocumentCategory.sk_tugas_mengajar]: {
     label: 'SK Tugas Mengajar',
+    group: 'teaching_assignment',
     recipientType: 'teacher',
     creatorRoles: [SCHOOL_ADMIN],
     approverRole: PRINCIPAL,
@@ -65,95 +180,13 @@ export const DOCUMENT_CATEGORIES: Record<DocumentCategory, CategoryConfig> = {
   },
   [DocumentCategory.sk_wali_kelas]: {
     label: 'SK Wali Kelas',
+    group: 'teaching_assignment',
     recipientType: 'teacher',
     creatorRoles: [SCHOOL_ADMIN],
     approverRole: PRINCIPAL,
     signerRole: PRINCIPAL,
     sideEffect: 'homeroom',
     enabled: true,
-  },
-  [DocumentCategory.surat_tugas]: {
-    label: 'Surat Tugas',
-    recipientType: 'teacher',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: PRINCIPAL,
-    signerRole: PRINCIPAL,
-    sideEffect: 'none',
-    enabled: true,
-  },
-  [DocumentCategory.surat_keterangan_kerja]: {
-    label: 'Surat Keterangan Kerja',
-    recipientType: 'teacher',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: PRINCIPAL,
-    signerRole: PRINCIPAL,
-    sideEffect: 'none',
-    enabled: true,
-  },
-
-  // ── Not yet implemented end-to-end (stubbed for later phases) ────────────────
-  [DocumentCategory.sk_pembina_ekskul]: {
-    label: 'SK Pembina Ekstrakurikuler',
-    recipientType: 'teacher',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: PRINCIPAL,
-    signerRole: PRINCIPAL,
-    sideEffect: 'none',
-    enabled: false,
-  },
-  [DocumentCategory.sk_wakasek]: {
-    label: 'SK Wakil Kepala Sekolah',
-    recipientType: 'staff',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: PRINCIPAL,
-    signerRole: PRINCIPAL,
-    sideEffect: 'position',
-    enabled: false,
-  },
-  [DocumentCategory.sk_koordinator]: {
-    label: 'SK Koordinator',
-    recipientType: 'staff',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: PRINCIPAL,
-    signerRole: PRINCIPAL,
-    sideEffect: 'position',
-    enabled: false,
-  },
-  [DocumentCategory.sk_kepala_sekolah]: {
-    label: 'SK Kepala Sekolah',
-    recipientType: 'principal',
-    creatorRoles: [SCHOOL_ADMIN, YAYASAN],
-    approverRole: YAYASAN,
-    signerRole: YAYASAN,
-    sideEffect: 'position',
-    enabled: false,
-  },
-  [DocumentCategory.sk_guru_tetap]: {
-    label: 'SK Guru Tetap',
-    recipientType: 'teacher',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: YAYASAN,
-    signerRole: YAYASAN,
-    sideEffect: 'employment_status',
-    enabled: false,
-  },
-  [DocumentCategory.sk_guru_kontrak]: {
-    label: 'SK Guru Kontrak',
-    recipientType: 'teacher',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: YAYASAN,
-    signerRole: YAYASAN,
-    sideEffect: 'employment_status',
-    enabled: false,
-  },
-  [DocumentCategory.surat_mutasi]: {
-    label: 'Surat Mutasi',
-    recipientType: 'staff',
-    creatorRoles: [SCHOOL_ADMIN],
-    approverRole: YAYASAN,
-    signerRole: YAYASAN,
-    sideEffect: 'transfer',
-    enabled: false,
   },
 };
 

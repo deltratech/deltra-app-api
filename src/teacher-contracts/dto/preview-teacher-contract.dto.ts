@@ -1,11 +1,28 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsEnum, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
+import { DocumentCategory } from '../document-categories';
 
 export class PreviewTeacherContractDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  teacherProfileId: string;
+  teacherProfileId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  recipientUserId?: string;
+
+  @ApiPropertyOptional({ enum: DocumentCategory })
+  @IsOptional()
+  @IsEnum(DocumentCategory)
+  category?: DocumentCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  recipientType?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -16,9 +33,10 @@ export class PreviewTeacherContractDto {
   @IsDateString()
   contractStartDate: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsDateString()
-  contractEndDate: string;
+  contractEndDate?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

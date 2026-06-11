@@ -132,8 +132,10 @@ export class TeacherContractsController {
 
   @Post('preview')
   @ApiOperation({ summary: 'Preview generated contract before finalization' })
-  preview(@Body() dto: PreviewTeacherContractDto) {
-    return this.teacherContractsService.preview(dto);
+  @Header('Content-Type', 'application/pdf')
+  @Header('Content-Disposition', 'inline; filename="contract-preview.pdf"')
+  async preview(@Body() dto: PreviewTeacherContractDto) {
+    return new StreamableFile(await this.teacherContractsService.preview(dto));
   }
 
   @Post()
@@ -153,6 +155,9 @@ export class TeacherContractsController {
       type: 'object',
       properties: {
         teacherProfileId: { type: 'string', format: 'uuid' },
+        recipientUserId: { type: 'string', format: 'uuid' },
+        category: { type: 'string' },
+        recipientType: { type: 'string', enum: ['teacher', 'staff', 'principal'] },
         contractStartDate: { type: 'string', format: 'date' },
         contractEndDate: { type: 'string', format: 'date' },
         employmentStatus: { type: 'string', enum: ['pns', 'p3k', 'tetap', 'honorer'] },
@@ -162,7 +167,7 @@ export class TeacherContractsController {
         notes: { type: 'string' },
         file: { type: 'string', format: 'binary' },
       },
-      required: ['teacherProfileId', 'contractStartDate', 'contractEndDate', 'file'],
+      required: ['contractStartDate', 'contractEndDate', 'file'],
     },
   })
   @ApiOperation({ summary: 'Create teacher contract by direct file upload (without template)' })
@@ -179,12 +184,14 @@ export class TeacherContractsController {
   @Get()
   @ApiOperation({ summary: 'Retrieve contracts by staff, status, and period' })
   @ApiQuery({ name: 'teacherProfileId', required: false })
+  @ApiQuery({ name: 'recipientUserId', required: false })
   @ApiQuery({ name: 'status', enum: TeacherContractStatus, required: false })
   @ApiQuery({ name: 'category', enum: DocumentCategory, required: false })
   @ApiQuery({ name: 'periodStart', required: false, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'periodEnd', required: false, description: 'YYYY-MM-DD' })
   findAll(
     @Query('teacherProfileId') teacherProfileId?: string,
+    @Query('recipientUserId') recipientUserId?: string,
     @Query('status') status?: TeacherContractStatus,
     @Query('category') category?: DocumentCategory,
     @Query('periodStart') periodStart?: string,
@@ -192,6 +199,7 @@ export class TeacherContractsController {
   ) {
     return this.teacherContractsService.findAll({
       teacherProfileId,
+      recipientUserId,
       status,
       category,
       periodStart,

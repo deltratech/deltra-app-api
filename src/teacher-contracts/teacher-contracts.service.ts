@@ -30,6 +30,11 @@ type TemplateVariableMeta = {
   required: boolean;
 };
 
+const TRANSPARENT_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  'base64',
+);
+
 const PROFILE_INCLUDE = {
   user: { select: { id: true, fullName: true, email: true, phone: true } },
   classSubjects: {
@@ -262,7 +267,15 @@ export class TeacherContractsService {
 
   async preview(dto: PreviewTeacherContractDto) {
     const payload = await this.buildRenderedContract(dto);
-    return { ...payload, mode: 'preview' };
+    if (!payload.template?.templateFileUrl) {
+      throw new BadRequestException('Selected template has no DOCX file');
+    }
+    const renderedDocxBuffer = await this.renderDocxTemplate(
+      payload.template.templateFileUrl,
+      payload.variables,
+      { skipMissingSignatureImages: true },
+    );
+    return this.convertDocxToPdf(renderedDocxBuffer.buffer, 'contract-preview.docx');
   }
 
   async create(dto: CreateTeacherContractDto, actor: ActorContext) {
@@ -272,8 +285,8 @@ export class TeacherContractsService {
     }
     const payload = await this.buildRenderedContract(dto);
     const start = new Date(dto.contractStartDate);
-    const end = new Date(dto.contractEndDate);
-    const renewalReminderAt = dto.renewalReminderAt ? new Date(dto.renewalReminderAt) : this.addDays(end, -30);
+    const end = dto.contractEndDate ? new Date(dto.contractEndDate) : null;
+    const renewalReminderAt = dto.renewalReminderAt ? new Date(dto.renewalReminderAt) : end ? this.addDays(end, -30) : null;
 
     if (!payload.template?.templateFileUrl) {
       throw new BadRequestException('Selected template has no DOCX file');
@@ -281,15 +294,16 @@ export class TeacherContractsService {
     const renderedDocxBuffer = await this.renderDocxTemplate(
       payload.template.templateFileUrl,
       payload.variables,
+      { skipMissingSignatureImages: true },
     );
 
     const createdAtLabel = new Date().toISOString().slice(0, 10);
-    const teacherSlug = String(payload.teacherFullName || 'teacher')
+    const recipientSlug = String(payload.recipientFullName || 'recipient')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'teacher';
-    const generatedPdfFileName = `${teacherSlug}-${createdAtLabel}-${randomUUID()}.pdf`;
-    const generatedPdfBuffer = await this.convertDocxToPdf(renderedDocxBuffer.buffer, `${teacherSlug}.docx`);
+      .replace(/^-+|-+$/g, '') || 'recipient';
+    const generatedPdfFileName = `${recipientSlug}-${createdAtLabel}-${randomUUID()}.pdf`;
+    const generatedPdfBuffer = await this.convertDocxToPdf(renderedDocxBuffer.buffer, `${recipientSlug}.docx`);
 
     const generatedFileUrl = await this.storage.upload(
       generatedPdfBuffer,
@@ -317,7 +331,8 @@ export class TeacherContractsService {
 
     const created = await this.tenantPrisma.client.teacherContract.create({
       data: {
-        teacherProfileId: dto.teacherProfileId,
+        teacherProfileId: payload.teacherProfileId,
+        recipientUserId: payload.recipientUserId,
         templateId: payload.template?.id,
         category: category as any,
         recipientType,
@@ -343,6 +358,7 @@ export class TeacherContractsService {
       },
       include: {
         teacher: { include: { user: true } },
+        recipientUser: true,
         template: true,
       },
     });
@@ -351,22 +367,26 @@ export class TeacherContractsService {
 
   async createByUpload(dto: CreateUploadedTeacherContractDto, file: Express.Multer.File, actor: ActorContext) {
     this.assertCanCreate(actor);
-    const teacher = await this.tenantPrisma.client.teacherProfile.findFirst({
-      where: { id: dto.teacherProfileId, deletedAt: null },
-      include: { user: { select: { fullName: true } } },
-    });
-    if (!teacher) throw new NotFoundException(`Teacher profile ${dto.teacherProfileId} not found`);
+    const recipient = await this.resolveRecipient(dto);
 
-    const employmentStatus = dto.employmentStatus ?? teacher.employmentStatus ?? undefined;
+    const employmentStatus = dto.employmentStatus ?? recipient.teacher?.employmentStatus ?? undefined;
     const start = new Date(dto.contractStartDate);
-    const end = new Date(dto.contractEndDate);
-    const renewalReminderAt = dto.renewalReminderAt ? new Date(dto.renewalReminderAt) : this.addDays(end, -30);
+    const end = dto.contractEndDate ? new Date(dto.contractEndDate) : null;
+    const renewalReminderAt = dto.renewalReminderAt ? new Date(dto.renewalReminderAt) : end ? this.addDays(end, -30) : null;
     const createdAtLabel = new Date().toISOString().slice(0, 10);
-    const teacherSlug = String(teacher.user.fullName ?? 'teacher')
+    const recipientSlug = String(recipient.fullName ?? 'recipient')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'teacher';
-    const finalFileName = file.originalname || `${teacherSlug}-${createdAtLabel}-${randomUUID()}`;
+      .replace(/^-+|-+$/g, '') || 'recipient';
+    const finalFileName = file.originalname || `${recipientSlug}-${createdAtLabel}-${randomUUID()}`;
+
+    const category = (dto.category ?? null) as DocumentCategory | null;
+    if (category && !isCategoryEnabled(category)) {
+      throw new BadRequestException(`Document category "${category}" is not available yet`);
+    }
+    const recipientType =
+      this.normalizeRecipientType(dto.recipientType)
+      ?? (category ? getCategoryConfig(category).recipientType : recipient.recipientType);
     const storageFileUrl = await this.storage.upload(
       file.buffer,
       finalFileName,
@@ -378,8 +398,11 @@ export class TeacherContractsService {
 
     return this.tenantPrisma.client.teacherContract.create({
       data: {
-        teacherProfileId: dto.teacherProfileId,
+        teacherProfileId: recipient.teacherProfileId,
+        recipientUserId: recipient.recipientUserId,
         templateId: null,
+        category: category as any,
+        recipientType,
         status: TeacherContractStatus.draft as any,
         contractStartDate: start,
         contractEndDate: end,
@@ -398,6 +421,7 @@ export class TeacherContractsService {
       },
       include: {
         teacher: { include: { user: true } },
+        recipientUser: true,
         template: true,
       },
     });
@@ -405,6 +429,7 @@ export class TeacherContractsService {
 
   findAll(filters: {
     teacherProfileId?: string;
+    recipientUserId?: string;
     status?: TeacherContractStatus;
     category?: DocumentCategory;
     periodStart?: string;
@@ -414,6 +439,7 @@ export class TeacherContractsService {
       where: {
         deletedAt: null,
         ...(filters.teacherProfileId ? { teacherProfileId: filters.teacherProfileId } : {}),
+        ...(filters.recipientUserId ? { recipientUserId: filters.recipientUserId } : {}),
         ...(filters.status ? { status: filters.status as any } : {}),
         ...(filters.category ? { category: filters.category as any } : {}),
         ...(filters.periodStart || filters.periodEnd
@@ -427,6 +453,7 @@ export class TeacherContractsService {
       },
       include: {
         teacher: { include: { user: { select: { id: true, fullName: true, email: true } } } },
+        recipientUser: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
         template: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -438,6 +465,7 @@ export class TeacherContractsService {
       where: { id, deletedAt: null },
       include: {
         teacher: { include: { user: true } },
+        recipientUser: true,
         template: true,
       },
     });
@@ -487,6 +515,7 @@ export class TeacherContractsService {
     category: DocumentCategory | string | null;
     documentTitle?: string | null;
     teacher?: { user?: { fullName?: string | null } | null } | null;
+    recipientUser?: { fullName?: string | null } | null;
   }) {
     try {
       const tenantSlug = getTenantContext()?.tenantSlug;
@@ -501,7 +530,7 @@ export class TeacherContractsService {
       });
       if (approvers.length === 0) return;
 
-      const teacherName = contract.teacher?.user?.fullName ?? 'a staff member';
+      const teacherName = contract.teacher?.user?.fullName ?? contract.recipientUser?.fullName ?? 'a staff member';
       const title = `${label} awaiting approval`;
       const body = `${label} for ${teacherName} has been submitted and needs your approval & signature.`;
 
@@ -637,7 +666,7 @@ export class TeacherContractsService {
     });
 
     // Apply the category's side-effect (teaching assignment, homeroom, …) on sign.
-    await this.applySideEffect(contract.category as DocumentCategory | null, contract.teacherProfileId, contract.payloadJson);
+    await this.applySideEffect(contract.category as DocumentCategory | null, contract.teacherProfileId ?? null, contract.payloadJson);
 
     await this.notifyRecipientSigned(contract);
 
@@ -649,10 +678,11 @@ export class TeacherContractsService {
     id: string;
     category: DocumentCategory | string | null;
     teacher?: { user?: { id?: string | null } | null } | null;
+    recipientUser?: { id?: string | null } | null;
   }) {
     try {
       const tenantSlug = getTenantContext()?.tenantSlug;
-      const recipientUserId = contract.teacher?.user?.id;
+      const recipientUserId = contract.recipientUser?.id ?? contract.teacher?.user?.id;
       if (!tenantSlug || !recipientUserId) return;
       const category = (contract.category ?? null) as DocumentCategory | null;
       const label = category ? getCategoryConfig(category).label : 'Document';
@@ -708,8 +738,8 @@ export class TeacherContractsService {
   }
 
   /** Apply a category's side-effect when a document is signed. Best-effort; never blocks signing. */
-  private async applySideEffect(category: DocumentCategory | null, teacherProfileId: string, payload: unknown) {
-    if (!category) return;
+  private async applySideEffect(category: DocumentCategory | null, teacherProfileId: string | null, payload: unknown) {
+    if (!category || !teacherProfileId) return;
     const { sideEffect } = getCategoryConfig(category);
     const data = (payload && typeof payload === 'object') ? payload as Record<string, any> : {};
     try {
@@ -763,8 +793,16 @@ export class TeacherContractsService {
       where: { userId: actor.userId, deletedAt: null },
       select: { id: true },
     });
-    if (!profile) throw new NotFoundException('Teacher profile for current user not found');
-    return this.findAll({ teacherProfileId: profile.id });
+    if (profile) return this.findAll({ teacherProfileId: profile.id });
+    return this.tenantPrisma.client.teacherContract.findMany({
+      where: { deletedAt: null, recipientUserId: actor.userId },
+      include: {
+        teacher: { include: { user: { select: { id: true, fullName: true, email: true } } } },
+        recipientUser: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+        template: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   /** Soft-delete a contract/document. */
@@ -803,25 +841,35 @@ export class TeacherContractsService {
         status: { in: [TeacherContractStatus.active as any, TeacherContractStatus.draft as any] },
         contractEndDate: { gte: now, lte: until },
       },
-      include: { teacher: { include: { user: { select: { fullName: true, email: true } } } } },
+      include: {
+        teacher: { include: { user: { select: { fullName: true, email: true } } } },
+        recipientUser: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+      },
       orderBy: { contractEndDate: 'asc' },
     });
   }
 
   private async buildRenderedContract(dto: PreviewTeacherContractDto | CreateTeacherContractDto) {
-    const teacher = await this.tenantPrisma.client.teacherProfile.findFirst({
-      where: { id: dto.teacherProfileId, deletedAt: null },
-      include: PROFILE_INCLUDE,
-    });
-    if (!teacher) throw new NotFoundException(`Teacher profile ${dto.teacherProfileId} not found`);
-
     const template = 'templateId' in dto && dto.templateId
       ? await this.tenantPrisma.client.teacherContractTemplate.findFirst({ where: { id: dto.templateId, deletedAt: null, isActive: true } })
       : null;
     if (!template) throw new BadRequestException('templateId is required and must reference an active template');
 
+    const category = (dto.category ?? template.category ?? null) as DocumentCategory | null;
+    const recipientType =
+      this.normalizeRecipientType(dto.recipientType)
+      ?? this.normalizeRecipientType(template.recipientType)
+      ?? (category ? getCategoryConfig(category).recipientType : undefined);
+    const recipient = await this.resolveRecipient({
+      teacherProfileId: dto.teacherProfileId,
+      recipientUserId: dto.recipientUserId,
+      recipientType,
+    });
+
     const customVariables = ('variables' in dto && dto.variables) ? dto.variables : {};
-    const teacherMap = this.buildTeacherVariableMap(teacher, dto);
+    const recipientMap = recipient.teacher
+      ? this.buildTeacherVariableMap(recipient.teacher, dto)
+      : this.buildUserVariableMap(recipient.user, dto);
     const templateVariableKeys = ((template.variablesJson as string[] | null) ?? [])
       .filter((key) => typeof key === 'string');
     const variables = templateVariableKeys.reduce<Record<string, string | number>>((acc, key) => {
@@ -829,13 +877,56 @@ export class TeacherContractsService {
       const custom = customVariables[key];
       const value = (custom !== undefined && custom !== '')
         ? custom
-        : teacherMap[this.normalizeVarKey(key)];
+        : recipientMap[this.normalizeVarKey(key)];
       if (value !== undefined && value !== '') acc[key] = value;
       return acc;
     }, {});
 
     const renderedContent = this.serializeRenderedVariables(variables);
-    return { template, variables, renderedContent, teacherFullName: teacher.user?.fullName ?? '' };
+    return {
+      template,
+      variables,
+      renderedContent,
+      recipientFullName: recipient.fullName,
+      teacherProfileId: recipient.teacherProfileId,
+      recipientUserId: recipient.recipientUserId,
+    };
+  }
+
+  private async resolveRecipient(input: { teacherProfileId?: string; recipientUserId?: string; recipientType?: string }) {
+    if (input.teacherProfileId) {
+      const teacher = await this.tenantPrisma.client.teacherProfile.findFirst({
+        where: { id: input.teacherProfileId, deletedAt: null },
+        include: PROFILE_INCLUDE,
+      });
+      if (!teacher) throw new NotFoundException(`Teacher profile ${input.teacherProfileId} not found`);
+      return {
+        teacher,
+        user: teacher.user,
+        fullName: teacher.user?.fullName ?? '',
+        teacherProfileId: teacher.id,
+        recipientUserId: teacher.user?.id ?? null,
+        recipientType: 'teacher',
+      };
+    }
+
+    if (input.recipientUserId) {
+      const user = await this.tenantPrisma.client.user.findFirst({
+        where: { id: input.recipientUserId, deletedAt: null },
+        select: { id: true, fullName: true, email: true, phone: true, role: true },
+      });
+      if (!user) throw new NotFoundException(`Recipient user ${input.recipientUserId} not found`);
+      return {
+        teacher: null,
+        user,
+        fullName: user.fullName,
+        teacherProfileId: null,
+        recipientUserId: user.id,
+        recipientType: input.recipientType ?? (user.role === UserRole.principal ? 'principal' : 'staff'),
+      };
+    }
+
+    throw new BadRequestException('teacherProfileId or recipientUserId is required');
   }
 
   /** Normalize a template placeholder key for alias matching: lowercase, alnum only. */
@@ -913,6 +1004,35 @@ export class TeacherContractsService {
     return byAlias;
   }
 
+  private buildUserVariableMap(
+    user: { fullName?: string | null; email?: string | null; phone?: string | null; role?: string | null } | null | undefined,
+    dto: PreviewTeacherContractDto | CreateTeacherContractDto,
+  ): Record<string, string> {
+    const fullName = user?.fullName ?? '';
+    const roleTitle = ('roleTitle' in dto && dto.roleTitle) ? dto.roleTitle : this.formatRoleLabel(user?.role);
+    const byAlias: Record<string, string> = {};
+    const set = (aliases: string[], value: string) => {
+      for (const alias of aliases) byAlias[this.normalizeVarKey(alias)] = value;
+    };
+    set(['nama', 'nama_guru', 'nama_staff', 'nama_pegawai', 'nama_kepala_sekolah', 'nama_lengkap', 'teacher_name', 'name'], fullName);
+    set(['email'], user?.email ?? '');
+    set(['telepon', 'no_telepon', 'no_hp', 'phone', 'hp'], user?.phone ?? '');
+    set(['jabatan', 'role_title', 'posisi'], roleTitle);
+    return byAlias;
+  }
+
+  private formatRoleLabel(role: string | null | undefined): string {
+    const labels: Record<string, string> = {
+      principal: 'Kepala Sekolah',
+      school_admin: 'Staff Admin',
+      network_admin: 'Yayasan',
+      teacher: 'Guru',
+      finance: 'Finance',
+      staff: 'Staff',
+    };
+    return role ? labels[role] ?? role : '';
+  }
+
   private serializeRenderedVariables(variables: Record<string, string | number>) {
     return JSON.stringify(variables);
   }
@@ -936,6 +1056,7 @@ export class TeacherContractsService {
   private async renderDocxTemplate(
     templateFileUrl: string,
     variables: Record<string, string | number>,
+    options: { skipMissingSignatureImages?: boolean } = {},
   ) {
     const templateBuffer = await this.storage.read(templateFileUrl);
     const zip = new PizZip(templateBuffer);
@@ -945,6 +1066,9 @@ export class TeacherContractsService {
     const imageModule = new ImageModuleCtor({
       centered: false,
       getImage: (tagValue: string, tagName: string) => {
+        if (options.skipMissingSignatureImages && !tagValue && this.isSignatureImageTag(tagName)) {
+          return TRANSPARENT_PNG;
+        }
         const buffer = this.base64ToImageBuffer(tagValue);
         if (!this.isLikelyImageBuffer(buffer)) {
           throw new BadRequestException(
@@ -967,6 +1091,10 @@ export class TeacherContractsService {
       buffer: output,
       fileName: `generated-contract-${Date.now()}.docx`,
     };
+  }
+
+  private isSignatureImageTag(tagName: string): boolean {
+    return /sign|ttd|tanda|paraf|signature/i.test(tagName);
   }
 
   private base64ToImageBuffer(value: string): Buffer {

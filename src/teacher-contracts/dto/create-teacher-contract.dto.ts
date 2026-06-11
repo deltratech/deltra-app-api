@@ -28,9 +28,15 @@ export enum TeacherContractStatus {
 }
 
 export class CreateTeacherContractDto {
-  @ApiProperty({ description: 'Teacher profile ID linked to the uploaded contract' })
+  @ApiPropertyOptional({ description: 'Teacher profile ID for teacher recipients' })
+  @IsOptional()
   @IsUUID()
-  teacherProfileId: string;
+  teacherProfileId?: string;
+
+  @ApiPropertyOptional({ description: 'User ID for principal/staff recipients' })
+  @IsOptional()
+  @IsUUID()
+  recipientUserId?: string;
 
   @ApiPropertyOptional({ enum: DocumentCategory, description: 'Official document category (drives approver/signer/side-effect)' })
   @IsOptional()
@@ -62,9 +68,10 @@ export class CreateTeacherContractDto {
   @IsDateString()
   contractStartDate: string;
 
-  @ApiProperty({ example: '2027-06-30' })
+  @ApiPropertyOptional({ example: '2027-06-30', description: 'Optional for open-ended SK / position assignments' })
+  @IsOptional()
   @IsDateString()
-  contractEndDate: string;
+  contractEndDate?: string;
 
   @ApiPropertyOptional({
     enum: TeacherContractStatus,
