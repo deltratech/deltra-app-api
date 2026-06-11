@@ -26,6 +26,7 @@
     "seed:tenant": "ts-node --project tsconfig.seed.json prisma/tenant/seed.ts",
     "seed:tenant:schools": "ts-node --project tsconfig.seed.json prisma/tenant/seed-schools.ts",
     "seed:tenant:attendance-feature": "ts-node --project tsconfig.seed.json prisma/tenant/seed-attendance-feature.ts"
+    "seed:tenant:contract-templates": "ts-node --project tsconfig.seed.json prisma/tenant/seed-contract-templates.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1052.0",

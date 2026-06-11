@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantStorage } from './tenant.context';
@@ -15,6 +16,7 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
@@ -54,11 +56,51 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
-    // 3. Subdomain: sma-pelita.deltra.id → "sma-pelita"
-    const host = req.hostname;
+    // 3. Subdomain: sma-pelita.deltra.id -> "sma-pelita"
+    const host = req.hostname.toLowerCase();
+    if (this.isReservedHost(host)) return null;
+
     const parts = host.split('.');
-    if (parts.length >= 3) return parts[0];
+    const subdomain = parts[0];
+    if (parts.length >= 3 && !this.reservedSubdomains().has(subdomain)) return subdomain;
 
     return null;
+  }
+
+  private isReservedHost(host: string): boolean {
+    return this.configuredHosts().has(host);
+  }
+
+  private configuredHosts(): Set<string> {
+    return new Set(
+      [
+        this.config.get<string>('APP_HOST'),
+        this.config.get<string>('API_HOST'),
+        this.config.get<string>('FRONTEND_HOST'),
+      ]
+        .flatMap((value) => this.splitConfigList(value))
+        .map((value) => this.normalizeHost(value)),
+    );
+  }
+
+  private reservedSubdomains(): Set<string> {
+    return new Set(
+      ['app', 'api', ...this.splitConfigList(this.config.get<string>('RESERVED_SUBDOMAINS'))].map(
+        (value) => value.toLowerCase(),
+      ),
+    );
+  }
+
+  private normalizeHost(value: string): string {
+    return value.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase();
+  }
+
+  private splitConfigList(value?: string): string[] {
+    return value
+      ? value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   }
 }

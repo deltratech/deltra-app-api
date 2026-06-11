@@ -6,7 +6,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { MigrationResult, TenantProvisionService } from '../tenant/tenant-provision.service';
@@ -17,6 +19,27 @@ import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { UpsertTenantSettingsDto } from './dto/upsert-tenant-settings.dto';
 import { paginatedResult } from '../common/utils/paginate';
 
+type TenantSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  type: 'school' | 'network';
+  parentId: string | null;
+  status: 'active' | 'inactive' | 'suspended';
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type TenantRelationSummary = Pick<TenantSummary, 'id' | 'name' | 'slug' | 'type' | 'status'>;
+
+type TenantDetail = TenantSummary & {
+  deletedAt: Date | null;
+};
+
+type TenantTree = TenantSummary & {
+  children: TenantSummary[] | null;
+};
+
 @Injectable()
 export class TenantsService {
   private readonly logger = new Logger(TenantsService.name);
@@ -25,50 +48,160 @@ export class TenantsService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: PrismaTenantService,
     private readonly provision: TenantProvisionService,
+    private readonly config: ConfigService,
   ) {}
 
   async findAll(filters: { page?: number; limit?: number; search?: string } = {}) {
     const { page = 1, limit = 20, search } = filters;
     const skip = (page - 1) * limit;
 
-    const where = {
-      deletedAt: null,
-      ...(search ? {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { slug: { contains: search, mode: 'insensitive' as const } },
-        ],
-      } : {}),
-    };
+    const searchTerm = search?.trim();
+    const searchWhere = searchTerm
+      ? Prisma.sql`
+          AND (
+            t.name ILIKE ${`%${searchTerm}%`}
+            OR t.slug ILIKE ${`%${searchTerm}%`}
+            OR EXISTS (
+              SELECT 1
+              FROM public.tenants c
+              WHERE c.parent_id = t.id
+                AND c.deleted_at IS NULL
+                AND (c.name ILIKE ${`%${searchTerm}%`} OR c.slug ILIKE ${`%${searchTerm}%`})
+            )
+          )
+        `
+      : Prisma.empty;
 
-    const [data, total] = await Promise.all([
-      this.prisma.tenant.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
-      this.prisma.tenant.count({ where }),
+    const [parents, total] = await Promise.all([
+      this.prisma.$queryRaw<TenantSummary[]>`
+        SELECT
+          t.id,
+          t.name,
+          t.slug,
+          t.type::text AS type,
+          t.parent_id AS "parentId",
+          t.status::text AS status,
+          t.created_at AS "createdAt",
+          t.updated_at AS "updatedAt"
+        FROM public.tenants t
+        WHERE t.deleted_at IS NULL
+          AND t.parent_id IS NULL
+        ${searchWhere}
+        ORDER BY t.created_at DESC
+        LIMIT ${limit}
+        OFFSET ${skip}
+      `,
+      this.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM public.tenants t
+        WHERE t.deleted_at IS NULL
+          AND t.parent_id IS NULL
+        ${searchWhere}
+      `,
     ]);
 
-    return paginatedResult(data, total, page, limit);
+    const children = parents.length
+      ? await this.prisma.$queryRaw<TenantSummary[]>`
+          SELECT
+            id,
+            name,
+            slug,
+            type::text AS type,
+            parent_id AS "parentId",
+            status::text AS status,
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+          FROM public.tenants
+          WHERE deleted_at IS NULL
+            AND parent_id = ANY(ARRAY[${Prisma.join(parents.map((tenant) => tenant.id))}]::uuid[])
+          ORDER BY created_at ASC
+        `
+      : [];
+
+    const childrenByParentId = children.reduce<Record<string, TenantSummary[]>>((acc, child) => {
+      if (!child.parentId) return acc;
+      acc[child.parentId] = acc[child.parentId] ?? [];
+      acc[child.parentId].push(child);
+      return acc;
+    }, {});
+
+    const data: TenantTree[] = parents.map((tenant) => {
+      const tenantChildren = childrenByParentId[tenant.id] ?? [];
+      return {
+        ...tenant,
+        children: tenantChildren.length ? tenantChildren : null,
+      };
+    });
+
+    return paginatedResult(data, Number(total[0]?.count ?? 0), page, limit);
   }
 
   async findOne(id: string) {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id, deletedAt: null },
-    });
+    const [tenant] = await this.prisma.$queryRaw<TenantDetail[]>`
+      SELECT
+        id,
+        name,
+        slug,
+        type::text AS type,
+        parent_id AS "parentId",
+        status::text AS status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt",
+        deleted_at AS "deletedAt"
+      FROM public.tenants
+      WHERE id = ${id}::uuid
+        AND deleted_at IS NULL
+      LIMIT 1
+    `;
     if (!tenant) throw new NotFoundException(`Tenant ${id} not found`);
-    return tenant;
+
+    const [parent, children] = await Promise.all([
+      tenant.parentId
+        ? this.prisma.$queryRaw<TenantRelationSummary[]>`
+            SELECT
+              id,
+              name,
+              slug,
+              type::text AS type,
+              status::text AS status
+            FROM public.tenants
+            WHERE id = ${tenant.parentId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1
+          `
+        : Promise.resolve([]),
+      this.prisma.$queryRaw<TenantRelationSummary[]>`
+        SELECT
+          id,
+          name,
+          slug,
+          type::text AS type,
+          status::text AS status
+        FROM public.tenants
+        WHERE parent_id = ${id}::uuid
+          AND deleted_at IS NULL
+        ORDER BY name ASC
+      `,
+    ]);
+
+    return { ...tenant, parent: parent[0] ?? null, children };
   }
 
   async create(dto: CreateTenantDto) {
+    const slug = this.normalizeSlug(dto.slug);
+    this.ensureSlugIsAllowed(slug);
+
     const exists = await this.prisma.tenant.findUnique({
-      where: { slug: dto.slug },
+      where: { slug },
     });
-    if (exists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
+    if (exists) throw new ConflictException(`Slug '${slug}' is already taken`);
 
     await this.validateTenantHierarchy(dto.type, dto.parentId);
 
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.name,
-        slug: dto.slug,
+        slug,
         type: dto.type,
         parentId: dto.parentId,
       },
@@ -91,32 +224,87 @@ export class TenantsService {
 
   async update(id: string, dto: UpdateTenantDto) {
     const tenant = await this.findOne(id);
-    await this.validateTenantHierarchy(dto.type ?? tenant.type, dto.parentId);
-    return this.prisma.tenant.update({
-      where: { id },
-      data: dto,
-    });
+    const nextType = dto.type ?? tenant.type;
+    const nextParentId = dto.parentId === undefined ? tenant.parentId : dto.parentId;
+    await this.validateTenantHierarchy(nextType, nextParentId);
+
+    const updates: Prisma.Sql[] = [Prisma.sql`updated_at = NOW()`];
+    if (dto.name !== undefined) updates.push(Prisma.sql`name = ${dto.name}`);
+    if (dto.type !== undefined) updates.push(Prisma.sql`type = ${dto.type}::tenant_type`);
+    if (dto.parentId !== undefined) {
+      updates.push(
+        dto.parentId === null
+          ? Prisma.sql`parent_id = NULL`
+          : Prisma.sql`parent_id = ${dto.parentId}::uuid`,
+      );
+    }
+    if (dto.status !== undefined) updates.push(Prisma.sql`status = ${dto.status}::tenant_status`);
+
+    const [updated] = await this.prisma.$queryRaw<TenantDetail[]>`
+      UPDATE public.tenants
+      SET ${Prisma.join(updates, ', ')}
+      WHERE id = ${id}::uuid
+        AND deleted_at IS NULL
+      RETURNING
+        id,
+        name,
+        slug,
+        type::text AS type,
+        parent_id AS "parentId",
+        status::text AS status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt",
+        deleted_at AS "deletedAt"
+    `;
+
+    if (!updated) throw new NotFoundException(`Tenant ${id} not found`);
+    return updated;
   }
 
   async register(dto: RegisterTenantDto) {
+    const slug = this.normalizeSlug(dto.slug);
+    this.ensureSlugIsAllowed(slug);
+
     const slugExists = await this.prisma.tenant.findUnique({
-      where: { slug: dto.slug },
+      where: { slug },
     });
-    if (slugExists) throw new ConflictException(`Slug '${dto.slug}' is already taken`);
-    if (dto.type !== 'school') {
-      throw new BadRequestException('Public tenant registration only supports independent schools');
-    }
+    if (slugExists) throw new ConflictException(`Slug '${slug}' is already taken`);
 
     // 1. Create tenant record in public schema
     const tenant = await this.prisma.tenant.create({
       data: {
         name: dto.tenantName,
-        slug: dto.slug,
+        slug,
         type: dto.type,
       },
     });
 
     try {
+      if (tenant.type === 'network') {
+        const passwordHash = await bcrypt.hash(dto.adminPassword, 12);
+        const adminUser = await this.prisma.platformUser.create({
+          data: {
+            email: dto.adminEmail,
+            fullName: dto.adminName,
+            passwordHash,
+            role: 'network_admin',
+            networkId: tenant.id,
+          },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            fullName: true,
+            role: true,
+            networkId: true,
+            status: true,
+            createdAt: true,
+          },
+        });
+
+        return { tenant, adminUser };
+      }
+
       // 2. Provision tenant schema + run migrations
       await this.provision.provision(tenant.slug);
 
@@ -156,7 +344,15 @@ export class TenantsService {
   }
 
   async validateSlug(rawSlug: string) {
-    const slug = rawSlug.trim().toLowerCase();
+    const slug = this.normalizeSlug(rawSlug);
+    if (this.isReservedSlug(slug)) {
+      return {
+        slug,
+        available: false,
+        message: `Slug '${slug}' is reserved`,
+      };
+    }
+
     const existing = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },
       select: { id: true, slug: true },
@@ -267,6 +463,37 @@ export class TenantsService {
         throw new BadRequestException('parentId must reference an existing foundation/network tenant');
       }
     }
+  }
+
+  private normalizeSlug(slug: string): string {
+    return slug.trim().toLowerCase();
+  }
+
+  private ensureSlugIsAllowed(slug: string) {
+    if (this.isReservedSlug(slug)) {
+      throw new ConflictException(`Slug '${slug}' is reserved`);
+    }
+  }
+
+  private isReservedSlug(slug: string): boolean {
+    return this.reservedSubdomains().has(slug);
+  }
+
+  private reservedSubdomains(): Set<string> {
+    return new Set(
+      ['app', 'api', ...this.splitConfigList(this.config.get<string>('RESERVED_SUBDOMAINS'))].map(
+        (value) => value.toLowerCase(),
+      ),
+    );
+  }
+
+  private splitConfigList(value?: string): string[] {
+    return value
+      ? value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   }
 
   // ── Migration management ─────────────────────────────────────────────────────

@@ -3,14 +3,22 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { toSchemaName } from '../tenant/tenant.utils';
+import { paginatedResult } from '../common/utils/paginate';
 import { CreateFoundationPolicyDto } from './dto/create-foundation-policy.dto';
 import { UpdateFoundationPolicyDto } from './dto/update-foundation-policy.dto';
+import { UpdateBranchDto } from './dto/update-branch.dto';
+import { BranchStatus } from './dto/update-branch-status.dto';
 
 type NetworkUser = {
   userId: string;
   role?: string;
   networkId?: string;
   isSuperAdmin?: boolean;
+};
+
+type PaginationOptions = {
+  page?: number;
+  limit?: number;
 };
 
 type FoundationPolicyTemplateUpdateData = {
@@ -107,6 +115,20 @@ const SCHOOL_SELECT = {
   settings: true,
 };
 
+const USER_SELECT = {
+  id: true,
+  email: true,
+  username: true,
+  fullName: true,
+  phone: true,
+  avatarUrl: true,
+  role: true,
+  status: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
 const CONTRACT_SOON_WARNING_DAYS = 30;
 const CONTRACT_EXTENDED_WARNING_DAYS = 90;
 const ACTIVITY_RECENT_DAYS = 30;
@@ -147,6 +169,127 @@ export class NetworksService {
 
     await this.audit(user, 'view_school_detail', 'tenant', school.id);
     return { ...school, metrics: { users, students, teachers } };
+  }
+
+  async listNetworkAdmins(user: NetworkUser) {
+    const networkId = this.requireNetworkAccess(user);
+    return this.prisma.platformUser.findMany({
+      where: { networkId, role: 'network_admin', deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        role: true,
+        networkId: true,
+        status: true,
+        lastLoginAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { fullName: 'asc' },
+    });
+  }
+
+  async listUsers(user: NetworkUser, options: PaginationOptions = {}) {
+    const { page = 1, limit = 20 } = options;
+    const networkId = this.requireNetworkAccess(user);
+    const network = await this.getNetwork(networkId);
+    const schools = await this.prisma.tenant.findMany({
+      where: { parentId: networkId, type: 'school', deletedAt: null },
+      select: SCHOOL_SELECT,
+      orderBy: { name: 'asc' },
+    });
+
+    const usersBySchool = await Promise.all(
+      schools.map(async (school) => ({
+        school,
+        users: await this.listSchoolUsers(school),
+      })),
+    );
+
+    const users = usersBySchool.flatMap(({ school, users }) =>
+      users.map((schoolUser) => ({
+        ...schoolUser,
+        school: this.toSchoolSummary(school),
+      })),
+    );
+    const skip = (page - 1) * limit;
+
+    await this.audit(user, 'list_network_users', 'tenant', network.id);
+    return {
+      network,
+      ...paginatedResult(users.slice(skip, skip + limit), users.length, page, limit),
+    };
+  }
+
+  async listUsersBySchool(user: NetworkUser, schoolId: string, options: PaginationOptions = {}) {
+    const { page = 1, limit = 20 } = options;
+    const networkId = this.requireNetworkAccess(user);
+    const school = await this.findBranch(networkId, schoolId);
+    const skip = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+      this.listSchoolUsers(school, { skip, take: limit }),
+      this.countSchoolUsers(school),
+    ]);
+    const data = users.map((schoolUser) => ({
+      ...schoolUser,
+      school: this.toSchoolSummary(school),
+    }));
+
+    await this.audit(user, 'list_school_users', 'tenant', school.id);
+    return {
+      school: this.toSchoolSummary(school),
+      ...paginatedResult(data, total, page, limit),
+    };
+  }
+
+  async updateBranch(user: NetworkUser, branchId: string, dto: UpdateBranchDto) {
+    const networkId = this.requireNetworkAccess(user);
+    await this.findBranch(networkId, branchId);
+
+    const branch = await this.prisma.tenant.update({
+      where: { id: branchId },
+      data: { name: dto.name },
+      select: SCHOOL_SELECT,
+    });
+    await this.audit(user, 'update_branch', 'tenant', branchId);
+    return branch;
+  }
+
+  async updateBranchStatus(user: NetworkUser, branchId: string, status: BranchStatus) {
+    const networkId = this.requireNetworkAccess(user);
+    await this.findBranch(networkId, branchId);
+
+    const [branch] = await this.prisma.$queryRaw<Array<{
+      id: string;
+      name: string;
+      slug: string;
+      type: string;
+      parentId: string | null;
+      status: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }>>`
+      UPDATE public.tenants
+      SET status = ${status}::tenant_status,
+          updated_at = NOW()
+      WHERE id = ${branchId}::uuid
+        AND parent_id = ${networkId}::uuid
+        AND type = 'school'::tenant_type
+        AND deleted_at IS NULL
+      RETURNING
+        id,
+        name,
+        slug,
+        type::text AS type,
+        parent_id AS "parentId",
+        status::text AS status,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `;
+    await this.audit(user, 'update_branch_status', 'tenant', branchId, { status });
+    return branch;
   }
 
   async dashboard(user: NetworkUser) {
@@ -296,6 +439,40 @@ export class NetworksService {
     });
     if (!policy) throw new NotFoundException(`Policy template ${id} not found`);
     return policy;
+  }
+
+  private async findBranch(networkId: string, branchId: string) {
+    const branch = await this.prisma.tenant.findFirst({
+      where: { id: branchId, parentId: networkId, type: 'school', deletedAt: null },
+      select: SCHOOL_SELECT,
+    });
+    if (!branch) throw new NotFoundException(`Branch ${branchId} not found in this network`);
+    return branch;
+  }
+
+  private async listSchoolUsers(school: { slug: string }, pagination?: { skip: number; take: number }) {
+    const db = this.tenantPrisma.forSchema(toSchemaName(school.slug));
+    return db.user.findMany({
+      where: { deletedAt: null },
+      select: USER_SELECT,
+      ...(pagination ?? {}),
+      orderBy: [{ role: 'asc' }, { fullName: 'asc' }],
+    });
+  }
+
+  private async countSchoolUsers(school: { slug: string }) {
+    const db = this.tenantPrisma.forSchema(toSchemaName(school.slug));
+    return db.user.count({ where: { deletedAt: null } });
+  }
+
+  private toSchoolSummary(school: { id: string; name: string; slug: string; type: string; parentId: string | null }) {
+    return {
+      id: school.id,
+      name: school.name,
+      slug: school.slug,
+      type: school.type,
+      parentId: school.parentId,
+    };
   }
 
   private async getNetwork(networkId: string) {
