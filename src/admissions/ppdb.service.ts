@@ -52,24 +52,49 @@ export class PpdbService {
     return this.withConfig(form);
   }
 
+  /** Normalise + validate a custom link slug, ensuring it doesn't collide with any token/slug. */
+  private async resolveSlug(raw: string, selfId: string): Promise<string | null> {
+    const slug = raw.trim().toLowerCase();
+    if (!slug) return null;
+    if (!/^[a-z0-9][a-z0-9-]{2,39}$/.test(slug)) {
+      throw new BadRequestException('Link must be 3–40 chars: lowercase letters, numbers, and hyphens');
+    }
+    if (slug === 'track' || slug === 'status') {
+      throw new BadRequestException(`"${slug}" is reserved`);
+    }
+    const clash = await this.forms.findFirst({
+      where: { OR: [{ token: slug }, { slug }], NOT: { id: selfId }, deletedAt: null },
+      select: { id: true },
+    });
+    if (clash) throw new BadRequestException('That link is already taken');
+    return slug;
+  }
+
   async updateForm(id: string, dto: UpdatePpdbFormDto) {
     const existing = await this.forms.findFirst({ where: { id, deletedAt: null } });
     if (!existing) throw new NotFoundException(`PPDB form ${id} not found`);
+    const slug = dto.slug === undefined ? undefined
+      : dto.slug === null || dto.slug.trim() === '' ? null
+      : await this.resolveSlug(dto.slug, id);
     const form = await this.forms.update({
       where: { id },
       data: {
         ...(dto.isOpen !== undefined ? { isOpen: dto.isOpen } : {}),
         ...(dto.title !== undefined ? { title: dto.title?.trim() || existing.title } : {}),
+        ...(slug !== undefined ? { slug } : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
         ...(dto.fields !== undefined ? { fieldsJson: dto.fields as any } : {}),
         ...(dto.requiredDocuments !== undefined ? { requiredDocumentsJson: dto.requiredDocuments as any } : {}),
+        ...(dto.paymentInstructions !== undefined ? { paymentInstructions: dto.paymentInstructions?.trim() || null } : {}),
+        ...(dto.acceptanceLetter !== undefined ? { acceptanceLetter: dto.acceptanceLetter?.trim() || null } : {}),
       },
     });
     return this.withConfig(form);
   }
 
-  /** Public, no-auth: resolve a form by its share token (+ available levels/grades). */
-  async getPublicByToken(token: string) {
-    const form = await this.forms.findFirst({ where: { token, deletedAt: null } });
+  /** Public, no-auth: resolve a form by its share token OR custom slug (+ levels/grades). */
+  async getPublicByToken(tokenOrSlug: string) {
+    const form = await this.forms.findFirst({ where: { OR: [{ token: tokenOrSlug }, { slug: tokenOrSlug }], deletedAt: null } });
     if (!form) throw new NotFoundException('Registration form not found');
     const cfg = this.withConfig(form);
     const [settings, feeSchedules, devFeeTiers] = await Promise.all([
@@ -81,6 +106,7 @@ export class PpdbService {
       token: form.token,
       academicYear: form.academicYear,
       title: form.title,
+      description: form.description,
       isOpen: form.isOpen,
       fields: cfg.fields,
       requiredDocuments: cfg.requiredDocuments,
@@ -100,7 +126,7 @@ export class PpdbService {
 
   /** Public, no-auth: create an application from a public submission. */
   async submitPublic(token: string, dto: PublicSubmitDto) {
-    const form = await this.forms.findFirst({ where: { token, deletedAt: null } });
+    const form = await this.forms.findFirst({ where: { OR: [{ token }, { slug: token }], deletedAt: null } });
     if (!form) throw new NotFoundException('Registration form not found');
     if (!form.isOpen) throw new ForbiddenException('Registration is currently closed');
 
@@ -180,14 +206,16 @@ export class PpdbService {
       packages = devFeeTiers.map((t) => ({ id: t.id, durationLabel: t.durationLabel, amount: t.amount, studentCategory: t.studentCategory }));
     }
 
-    // Required-document checklist from this year's form (defaulted).
+    // Required-document checklist + payment instructions from this year's form (defaulted).
     const form = await this.forms.findFirst({ where: { academicYear: app.academicYear, deletedAt: null } });
     const requiredDocuments = form ? this.withConfig(form).requiredDocuments : DEFAULT_REQUIRED_DOCS;
+    const paymentInstructions = form?.paymentInstructions ?? null;
 
     return {
       applicantName: app.applicantName,
       applicationNo: app.applicationNo,
       trackingCode: app.trackingCode,
+      paymentInstructions,
       schoolLevel: app.schoolLevel,
       gradeLabel: app.gradeLabel,
       academicYear: app.academicYear,
@@ -195,6 +223,7 @@ export class PpdbService {
       testDate: app.testDate,
       selectedDevFeeTierId: app.selectedDevFeeTierId,
       needsKfProof: app.stage === AdmissionStage.kf_pending,
+      letter: app.letterUrl ? { url: app.letterUrl, issuedAt: app.letterIssuedAt } : null,
       documents: app.documents,
       requiredDocuments,
       invoices: app.invoices,

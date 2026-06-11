@@ -1,14 +1,17 @@
 import {
   BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post,
-  Query, UploadedFile, UseInterceptors,
+  Query, Res, StreamableFile, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdmissionsService } from './admissions.service';
+import { LettersService } from './letters.service';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
 import { AssignTestDto, DecisionDto, RecordResultDto } from './dto/transition.dto';
+import { BulkTransitionDto } from './dto/bulk-transition.dto';
 import { VerifyDocumentDto } from './dto/document.dto';
 import {
   AdmissionDocStatus, AdmissionDocType, AdmissionSchoolLevel, AdmissionStage,
@@ -18,7 +21,10 @@ import {
 @ApiBearerAuth()
 @Controller('admissions')
 export class AdmissionsController {
-  constructor(private readonly service: AdmissionsService) {}
+  constructor(
+    private readonly service: AdmissionsService,
+    private readonly letters: LettersService,
+  ) {}
 
   @Get('applications')
   @ApiOperation({ summary: 'List admission applications (PPDB) in this branch' })
@@ -41,6 +47,27 @@ export class AdmissionsController {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Get('applications/export')
+  @ApiOperation({ summary: 'Export applicants (matching the filter) as an .xlsx file' })
+  @ApiQuery({ name: 'stage', enum: AdmissionStage, required: false })
+  @ApiQuery({ name: 'schoolLevel', enum: AdmissionSchoolLevel, required: false })
+  @ApiQuery({ name: 'academicYear', required: false })
+  @ApiQuery({ name: 'search', required: false })
+  async exportApplications(
+    @Res({ passthrough: true }) res: Response,
+    @Query('stage') stage?: AdmissionStage,
+    @Query('schoolLevel') schoolLevel?: AdmissionSchoolLevel,
+    @Query('academicYear') academicYear?: string,
+    @Query('search') search?: string,
+  ) {
+    const buf = await this.service.exportWorkbook({ stage, schoolLevel, academicYear, search });
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="ppdb-applicants${stage ? '-' + stage : ''}.xlsx"`,
+    });
+    return new StreamableFile(buf);
   }
 
   @Get('stats')
@@ -102,6 +129,41 @@ export class AdmissionsController {
   @ApiOperation({ summary: 'Mark an accepted applicant as enrolled' })
   enroll(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.enroll(id);
+  }
+
+  @Post('applications/bulk')
+  @ApiOperation({ summary: 'Apply one stage transition to many applications (by ids or filter)' })
+  bulk(@Body() dto: BulkTransitionDto) {
+    return this.service.bulkTransition(dto);
+  }
+
+  @Post('letters/bulk-issue')
+  @ApiOperation({ summary: 'Issue acceptance letters for many applications (by ids)' })
+  bulkIssueLetters(@Body() body: { ids: string[] }) {
+    return this.letters.bulkIssue(body?.ids ?? []);
+  }
+
+  @Post('applications/:id/issue-letter')
+  @ApiOperation({ summary: 'Generate + store the acceptance letter and mark it issued' })
+  issueLetter(@Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.issueLetter(id);
+  }
+
+  @Get('applications/:id/letter/preview')
+  @ApiOperation({ summary: 'Render the acceptance letter PDF without saving (admin preview)' })
+  async previewLetter(@Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const buf = await this.letters.previewLetter(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="acceptance-letter-preview.pdf"',
+    });
+    return new StreamableFile(buf);
+  }
+
+  @Patch('applications/:id/block')
+  @ApiOperation({ summary: 'Block (put on hold) or unblock an application' })
+  block(@Param('id', ParseUUIDPipe) id: string, @Body() body: { blocked: boolean; reason?: string }) {
+    return this.service.setBlocked(id, !!body.blocked, body.reason);
   }
 
   @Delete('applications/:id')

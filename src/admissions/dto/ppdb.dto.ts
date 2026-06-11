@@ -25,6 +25,14 @@ export class UpdatePpdbFormDto {
   @IsOptional() @IsString()
   title?: string;
 
+  @ApiPropertyOptional({ description: 'Custom short link slug (a-z, 0-9, hyphen); null to clear' })
+  @IsOptional() @IsString()
+  slug?: string | null;
+
+  @ApiPropertyOptional({ description: 'Form header intro text shown to parents' })
+  @IsOptional() @IsString()
+  description?: string | null;
+
   @ApiPropertyOptional({ description: 'Applicant-info field definitions' })
   @IsOptional() @IsArray()
   fields?: PpdbField[];
@@ -32,6 +40,14 @@ export class UpdatePpdbFormDto {
   @ApiPropertyOptional({ description: 'Required-document checklist' })
   @IsOptional() @IsArray()
   requiredDocuments?: PpdbRequiredDoc[];
+
+  @ApiPropertyOptional({ description: 'Manual/bank-transfer payment instructions shown to parents' })
+  @IsOptional() @IsString()
+  paymentInstructions?: string | null;
+
+  @ApiPropertyOptional({ description: 'Acceptance-letter body template (placeholders like {applicantName})' })
+  @IsOptional() @IsString()
+  acceptanceLetter?: string | null;
 }
 
 /** Public (no-auth) applicant submission via the shared PPDB link. */

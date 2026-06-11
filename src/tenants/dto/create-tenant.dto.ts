@@ -8,8 +8,9 @@ import {
   Matches,
 } from 'class-validator';
 import { TenantType } from '@prisma/client';
+import { SchoolLevelsDto } from './school-levels.dto';
 
-export class CreateTenantDto {
+export class CreateTenantDto extends SchoolLevelsDto {
   @ApiProperty({ example: 'SMA Pelita Bangsa' })
   @IsString()
   @IsNotEmpty()

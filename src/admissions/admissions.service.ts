@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { StorageService } from '../storage/storage.service';
@@ -6,6 +7,7 @@ import { paginatedResult } from '../common/utils/paginate';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
 import { AssignTestDto, DecisionDto, RecordResultDto } from './dto/transition.dto';
+import { BulkTransitionDto } from './dto/bulk-transition.dto';
 import { VerifyDocumentDto } from './dto/document.dto';
 import {
   AdmissionDocStatus, AdmissionDocType, AdmissionKfStatusSource, AdmissionSchoolLevel,
@@ -32,17 +34,17 @@ export class AdmissionsService {
 
   private get db() { return this.tenantPrisma.client.admissionApplication; }
 
-  private decorate<T extends { documents?: { status: string }[]; enrolledAt?: Date | null }>(app: T) {
+  private decorate<T extends { documents?: { status: string }[]; enrolledAt?: Date | null; blockedAt?: Date | null }>(app: T) {
     const docs = app.documents ?? [];
-    return { ...app, documentsStatus: documentsStatus(docs), enrolled: !!app.enrolledAt };
+    return { ...app, documentsStatus: documentsStatus(docs), enrolled: !!app.enrolledAt, blocked: !!app.blockedAt };
   }
 
-  async findAll(filters: {
-    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string;
-    search?: string; page?: number; limit?: number;
-  } = {}) {
-    const { stage, schoolLevel, academicYear, search, page = 1, limit = 20 } = filters;
-    const where = {
+  /** Shared where-builder for application filters (list + bulk). */
+  private buildApplicationWhere(filters: {
+    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
+  }) {
+    const { stage, schoolLevel, academicYear, search } = filters;
+    return {
       deletedAt: null,
       ...(stage ? { stage } : {}),
       ...(schoolLevel ? { schoolLevel } : {}),
@@ -55,6 +57,14 @@ export class AdmissionsService {
         ],
       } : {}),
     };
+  }
+
+  async findAll(filters: {
+    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string;
+    search?: string; page?: number; limit?: number;
+  } = {}) {
+    const { page = 1, limit = 20 } = filters;
+    const where = this.buildApplicationWhere(filters);
     const [data, total] = await Promise.all([
       this.db.findMany({
         where,
@@ -66,6 +76,68 @@ export class AdmissionsService {
       this.db.count({ where }),
     ]);
     return paginatedResult(data.map((a) => this.decorate(a)), total, page, limit);
+  }
+
+  /** Export all applicants matching the filter as an .xlsx workbook. */
+  async exportWorkbook(filters: {
+    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
+  } = {}) {
+    const rows = await this.db.findMany({
+      where: this.buildApplicationWhere(filters),
+      include: { documents: { select: { status: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const stageLabel: Record<string, string> = {
+      applied: 'Applied', kf_pending: 'KF pending', document_review: 'Document review', tested: 'Tested',
+      passed: 'Passed', failed: 'Failed', offer_pending: 'Offer pending', accepted: 'Accepted',
+      enrolled: 'Enrolled', rejected: 'Rejected',
+    };
+    const levelLabel: Record<string, string> = { preschool: 'Pre-school', primary: 'Primary', secondary: 'Secondary' };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Deltra PPDB';
+    const ws = wb.addWorksheet('Applicants');
+    ws.columns = [
+      { header: 'No.', key: 'no', width: 16 },
+      { header: 'Applicant', key: 'name', width: 26 },
+      { header: 'NIK', key: 'nik', width: 20 },
+      { header: 'School level', key: 'level', width: 14 },
+      { header: 'Grade / package', key: 'grade', width: 22 },
+      { header: 'Academic year', key: 'year', width: 14 },
+      { header: 'Stage', key: 'stage', width: 16 },
+      { header: 'Test score', key: 'score', width: 11 },
+      { header: 'Documents', key: 'docs', width: 12 },
+      { header: 'Category', key: 'category', width: 14 },
+      { header: 'Guardian', key: 'guardian', width: 22 },
+      { header: 'Guardian phone', key: 'phone', width: 18 },
+      { header: 'Guardian email', key: 'email', width: 26 },
+      { header: 'Enrolled', key: 'enrolled', width: 10 },
+      { header: 'Registered', key: 'created', width: 14 },
+    ];
+    const head = ws.getRow(1);
+    head.font = { bold: true, color: { argb: 'FF0E5247' } };
+    head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5F1' } }; });
+
+    for (const a of rows) {
+      ws.addRow({
+        no: a.applicationNo ?? '',
+        name: a.applicantName,
+        nik: a.applicantNik ?? '',
+        level: levelLabel[a.schoolLevel] ?? a.schoolLevel,
+        grade: a.gradeLabel,
+        year: a.academicYear,
+        stage: stageLabel[a.stage] ?? a.stage,
+        score: a.testScore ?? '',
+        docs: documentsStatus(a.documents),
+        category: a.studentCategory ? a.studentCategory.replace(/_/g, ' ') : '',
+        guardian: a.guardianName ?? '',
+        phone: a.guardianPhone ?? '',
+        email: a.guardianEmail ?? '',
+        enrolled: a.enrolledAt ? 'Yes' : 'No',
+        created: a.createdAt ? new Date(a.createdAt).toISOString().slice(0, 10) : '',
+      });
+    }
+    return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer);
   }
 
   /** Stage counts + rollups for the pipeline + stats cards. */
@@ -218,6 +290,75 @@ export class AdmissionsService {
     await this.findOne(id);
     await this.db.update({ where: { id }, data: { deletedAt: new Date() } });
     return { id, deleted: true };
+  }
+
+  /** Block (put on hold) or unblock an application — an impediment flag, stage unchanged. */
+  async setBlocked(id: string, blocked: boolean, reason?: string) {
+    await this.findOne(id);
+    const app = await this.db.update({
+      where: { id },
+      data: {
+        blockedAt: blocked ? new Date() : null,
+        blockReason: blocked ? (reason?.trim() || null) : null,
+      },
+      include: { documents: { select: DOC_SELECT } },
+    });
+    return this.decorate(app);
+  }
+
+  /** Apply one stage transition to many applications at once (by ids or by filter). */
+  async bulkTransition(dto: BulkTransitionDto) {
+    const hasIds = Array.isArray(dto.ids) && dto.ids.length > 0;
+    const filter = dto.filter ?? {};
+    const hasScope = !!filter.academicYear || !!filter.stage || !!filter.search;
+    if (!hasIds && !hasScope) {
+      throw new BadRequestException('Provide ids, or a filter with at least an academicYear, stage, or search');
+    }
+    const where = hasIds
+      ? { id: { in: dto.ids! }, deletedAt: null }
+      : this.buildApplicationWhere(filter);
+
+    let data: Record<string, unknown>;
+    switch (dto.action) {
+      case 'assign_test':
+        if (!dto.testDate) throw new BadRequestException('testDate is required for assign_test');
+        data = { testDate: new Date(dto.testDate), stage: AdmissionStage.tested };
+        break;
+      case 'record_result':
+        data = {
+          stage: dto.passed ? AdmissionStage.passed : AdmissionStage.failed,
+          resultDate: new Date(),
+          ...(dto.testScore != null ? { testScore: dto.testScore } : {}),
+        };
+        break;
+      case 'decision':
+        data = {
+          stage: dto.accepted ? AdmissionStage.accepted : AdmissionStage.rejected,
+          resultDate: new Date(),
+        };
+        break;
+      case 'send_offer':
+        data = { stage: AdmissionStage.offer_pending };
+        break;
+      case 'enroll':
+        data = { stage: AdmissionStage.enrolled, enrolledAt: new Date() };
+        break;
+      case 'set_stage':
+        if (!dto.stage) throw new BadRequestException('stage is required for set_stage');
+        data = { stage: dto.stage };
+        break;
+      case 'block':
+        data = { blockedAt: new Date(), blockReason: dto.reason?.trim() || null };
+        break;
+      case 'unblock':
+        data = { blockedAt: null, blockReason: null };
+        break;
+      default:
+        throw new BadRequestException('Unknown bulk action');
+    }
+
+    const res = await this.db.updateMany({ where, data: data as any });
+    return { updated: res.count };
   }
 
   // ── Level settings (test gate / cut-off / grades) ────────────────────────────

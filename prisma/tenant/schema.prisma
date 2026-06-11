@@ -1147,6 +1147,10 @@ model AdmissionApplication {
   trackingCode         String?            @map("tracking_code")          // short access code for lookup-by-number
   selectedDevFeeTierId String?            @map("selected_dev_fee_tier_id") @db.Uuid
   formDataJson         Json?              @map("form_data_json")         // custom form-field answers
+  blockedAt            DateTime?          @map("blocked_at") @db.Timestamptz(6)  // on-hold / blocked impediment
+  blockReason          String?            @map("block_reason")
+  letterIssuedAt       DateTime?          @map("letter_issued_at") @db.Timestamptz(6)  // acceptance letter
+  letterUrl            String?            @map("letter_url")
 
   notes          String?
   createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1307,11 +1311,15 @@ model AdmissionInvoiceItem {
 model PpdbForm {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   token        String    @unique
+  slug         String?   @unique                                            // custom short link
   academicYear String    @map("academic_year")
   title        String
+  description  String?                                                       // form header intro text
   isOpen       Boolean   @default(true) @map("is_open")
   fieldsJson            Json @default("[]") @map("fields_json")             // applicant-info field definitions
   requiredDocumentsJson Json @default("[]") @map("required_documents_json") // document checklist
+  paymentInstructions  String? @map("payment_instructions")                // manual/bank-transfer payment details
+  acceptanceLetter     String? @map("acceptance_letter")                   // editable acceptance-letter body template
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)

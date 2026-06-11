@@ -99,6 +99,8 @@ model TenantSettings {
   locale         String   @default("id")
   academicYear   String?         @map("academic_year")
   semester       Int?            @db.SmallInt
+  levelsOffered  String[]        @default([]) @map("levels_offered")  // "preschool" | "primary" | "secondary"
+  preschoolTypes String[]        @default([]) @map("preschool_types") // custom preschool sub-types, e.g. "Kiddy 1", "Kiddy 2"
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
