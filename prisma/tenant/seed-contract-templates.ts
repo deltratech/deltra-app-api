@@ -29,7 +29,7 @@ import {
   PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
 import PizZip from 'pizzip';
-import { PrismaClient, TeacherContractTemplateType } from '../../src/generated/tenant-client';
+import { PrismaClient } from '../../src/generated/tenant-client';
 import { tenantSeedUrl } from './seed-url';
 
 // ── Connection ──────────────────────────────────────────────────────────────
@@ -99,10 +99,10 @@ function extractVariableKeys(buffer: Buffer): string[] {
 
 const ASSET_DIR = join(__dirname, 'assets', 'contract-templates');
 
-const TEMPLATES: Array<{ name: string; templateType: TeacherContractTemplateType; file: string }> = [
-  { name: 'SK Pengangkatan Guru Tetap (GTY)', templateType: 'guru_tetap',   file: 'SK-GTY-Guru.docx' },
-  { name: 'SK Tugas Mengajar',                templateType: 'guru_honorer', file: 'SK-Tugas-Mengajar.docx' },
-  { name: 'SK Pengangkatan Kepala Sekolah',   templateType: 'staff',        file: 'SK-Kepsek-Yayasan.docx' },
+const TEMPLATES: Array<{ name: string; file: string }> = [
+  { name: 'SK Pengangkatan Guru Tetap (GTY)', file: 'SK-GTY-Guru.docx' },
+  { name: 'SK Tugas Mengajar',                file: 'SK-Tugas-Mengajar.docx' },
+  { name: 'SK Pengangkatan Kepala Sekolah',   file: 'SK-Kepsek-Yayasan.docx' },
 ];
 
 async function main() {
@@ -113,7 +113,7 @@ async function main() {
 
   for (const tpl of TEMPLATES) {
     const existing = await prisma.teacherContractTemplate.findFirst({
-      where: { deletedAt: null, name: tpl.name, templateType: tpl.templateType, version: 1 },
+      where: { deletedAt: null, name: tpl.name, version: 1 },
     });
     if (existing) {
       skipped++;
@@ -130,7 +130,6 @@ async function main() {
     await prisma.teacherContractTemplate.create({
       data: {
         name: tpl.name,
-        templateType: tpl.templateType,
         variablesJson: variableKeys as any,
         templateFileUrl,
         templateFileName: tpl.file,
@@ -141,7 +140,7 @@ async function main() {
       },
     });
     created++;
-    log(`created: ${tpl.name} (${tpl.templateType}) — ${variableKeys.length} variables`);
+    log(`created: ${tpl.name} — ${variableKeys.length} variables`);
   }
 
   log(`\n✓ Contract template seed complete for schema: ${schema}`);

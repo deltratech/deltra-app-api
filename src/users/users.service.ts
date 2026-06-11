@@ -123,6 +123,54 @@ export class UsersService {
     return user;
   }
 
+  /** Current user's reusable signature (base64 PNG data URL). */
+  async getMySignature(userId: string) {
+    const user = await this.tenantPrisma.client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true, signatureData: true },
+    });
+    if (!user) throw new NotFoundException('Current user not found');
+    return user;
+  }
+
+  /** Save or clear the current user's reusable signature. */
+  async updateMySignature(userId: string, signatureData: string | null) {
+    if (signatureData !== null && !/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(signatureData)) {
+      throw new BadRequestException('signatureData must be a base64 image data URL (data:image/png;base64,…)');
+    }
+    const user = await this.tenantPrisma.client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Current user not found');
+    return this.tenantPrisma.client.user.update({
+      where: { id: userId },
+      data: { signatureData },
+      select: { id: true, signatureData: true },
+    });
+  }
+
+  /** Grant/revoke a user's contract-approval delegation. Principal-only (or superadmin). */
+  async updateContractApprover(
+    targetUserId: string,
+    enabled: boolean,
+    actor: { userId: string; isSuperAdmin?: boolean; role?: string },
+  ) {
+    if (!actor.isSuperAdmin && actor.role !== 'principal') {
+      throw new ForbiddenException('Only the principal may manage approval delegates');
+    }
+    const user = await this.tenantPrisma.client.user.findFirst({
+      where: { id: targetUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException(`User ${targetUserId} not found`);
+    return this.tenantPrisma.client.user.update({
+      where: { id: targetUserId },
+      data: { contractApprover: enabled },
+      select: { id: true, contractApprover: true },
+    });
+  }
+
   async create(dto: CreateUserDto) {
     if (!dto.email) {
       throw new BadRequestException('Email is required');

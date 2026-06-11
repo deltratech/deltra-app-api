@@ -66,6 +66,31 @@ export class UsersController {
     return this.usersService.findPlatformUsers({ search, role, page, limit }, user);
   }
 
+  @Get('me/signature')
+  @ApiOperation({ summary: "Get the current user's reusable signature" })
+  getMySignature(@CurrentUser() user: { userId: string }) {
+    return this.usersService.getMySignature(user.userId);
+  }
+
+  @Patch('me/signature')
+  @ApiOperation({ summary: "Save or clear the current user's reusable signature (base64 PNG data URL)" })
+  updateMySignature(
+    @CurrentUser() user: { userId: string },
+    @Body() body: { signatureData: string | null },
+  ) {
+    return this.usersService.updateMySignature(user.userId, body.signatureData ?? null);
+  }
+
+  @Patch(':id/contract-approver')
+  @ApiOperation({ summary: 'Grant or revoke a user as a contract-approval delegate (principal-only)' })
+  updateContractApprover(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { enabled: boolean },
+    @CurrentUser() user: { userId: string; isSuperAdmin?: boolean; role?: string },
+  ) {
+    return this.usersService.updateContractApprover(id, !!body.enabled, user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a user by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {

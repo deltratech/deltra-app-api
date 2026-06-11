@@ -97,7 +97,28 @@ export class NotificationsService {
       }),
       this.tenantPrisma.client.notificationRecipient.count({ where }),
     ]);
-    return paginatedResult(data, total, page, limit);
+    return paginatedResult(data.map((r) => this.toApiNotification(r)), total, page, limit);
+  }
+
+  /** Flatten a recipient+event row into the flat notification shape the clients expect. */
+  private toApiNotification(r: { id: string; readAt: Date | null; createdAt: Date; event: any }) {
+    const e = r.event ?? {};
+    const data = (e.data && typeof e.data === 'object') ? e.data as Record<string, unknown> : {};
+    return {
+      id: r.id,
+      title: e.title ?? '',
+      body: e.body ?? '',
+      message: e.body ?? '',
+      category: e.category,
+      priority: e.priority,
+      eventType: e.eventType,
+      sourceType: e.sourceType ?? null,
+      sourceId: e.sourceId ?? null,
+      isRead: r.readAt != null,
+      createdAt: r.createdAt,
+      actionUrl: typeof data.pageId === 'string' ? data.pageId : null,
+      data,
+    };
   }
 
   async markRead(userId: string, id: string) {

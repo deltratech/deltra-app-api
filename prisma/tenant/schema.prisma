@@ -93,22 +93,36 @@ enum EmploymentStatus {
   @@map("employment_status")
 }
 
-enum TeacherContractTemplateType {
-  guru_tetap
-  guru_honorer
-  staff
-
-  @@map("teacher_contract_template_type")
-}
-
 enum TeacherContractStatus {
   draft
   pending_signature
+  pending_approval
+  approved
+  rejected
   active
+  archived
   expired
   renewed
 
   @@map("teacher_contract_status")
+}
+
+/// Categories of official school documents (SK / Surat). Workflow rules per
+/// category live in code (document-categories.ts), not in the DB.
+enum DocumentCategory {
+  sk_tugas_mengajar
+  sk_wali_kelas
+  sk_pembina_ekskul
+  sk_wakasek
+  sk_koordinator
+  sk_kepala_sekolah
+  sk_guru_tetap
+  sk_guru_kontrak
+  surat_tugas
+  surat_mutasi
+  surat_keterangan_kerja
+
+  @@map("document_category")
 }
 
 enum PortfolioType {
@@ -273,6 +287,8 @@ model User {
   passwordHash String?    @map("password_hash")
   fullName     String     @map("full_name")
   avatarUrl    String?    @map("avatar_url")
+  signatureData String?   @map("signature_data")
+  contractApprover Boolean @default(false) @map("contract_approver")
   role         UserRole
   status       UserStatus @default(active)
   lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
@@ -387,17 +403,26 @@ model TeacherContract {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   teacherProfileId          String                      @map("teacher_profile_id") @db.Uuid
   templateId                String?                     @map("template_id") @db.Uuid
-  templateType              TeacherContractTemplateType @map("template_type")
+  category                  DocumentCategory?
+  recipientType             String?                     @map("recipient_type")
+  approverRolesJson         Json?                       @map("approver_roles_json") @db.JsonB
+  signaturesJson            Json?                       @map("signatures_json") @db.JsonB
   status                    TeacherContractStatus       @default(draft)
   contractStartDate         DateTime                    @map("contract_start_date") @db.Date
   contractEndDate           DateTime                    @map("contract_end_date") @db.Date
   employmentStatus          EmploymentStatus?           @map("employment_status")
   teachingAssignmentNotes   String?                     @map("teaching_assignment_notes")
   documentTitle             String?                     @map("document_title")
+  payloadJson               Json?                       @map("payload_json") @db.JsonB
   fileUrl                   String                      @map("file_url")
   fileName                  String                      @map("file_name")
   mimeType                  String                      @map("mime_type")
   sizeBytes                 Int                         @map("size_bytes")
+  approverUserId            String?                     @map("approver_user_id") @db.Uuid
+  approvedAt                DateTime?                   @map("approved_at") @db.Timestamptz(6)
+  rejectedAt                DateTime?                   @map("rejected_at") @db.Timestamptz(6)
+  rejectReason              String?                     @map("reject_reason")
+  signerUserId              String?                     @map("signer_user_id") @db.Uuid
   signedAt                  DateTime?                   @map("signed_at") @db.Timestamptz(6)
   eSignature                String?                     @map("e_signature")
   notes                     String?
@@ -413,8 +438,8 @@ model TeacherContract {
   template TeacherContractTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([teacherProfileId])
-  @@index([templateType])
   @@index([status])
+  @@index([category])
   @@index([contractStartDate, contractEndDate])
   @@map("teacher_contracts")
 }
@@ -422,8 +447,11 @@ model TeacherContract {
 model TeacherContractTemplate {
   id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
-  templateType TeacherContractTemplateType @map("template_type")
+  category     DocumentCategory?
+  recipientType String?                    @map("recipient_type")
+  approverRolesJson Json?                  @map("approver_roles_json") @db.JsonB
   variablesJson Json?                      @map("variables_json") @db.JsonB
+  signatureSlotsJson Json?                 @map("signature_slots_json") @db.JsonB
   templateFileUrl String?                   @map("template_file_url")
   templateFileName String?                  @map("template_file_name")
   templateMimeType String?                  @map("template_mime_type")
@@ -436,7 +464,7 @@ model TeacherContractTemplate {
 
   contracts TeacherContract[]
 
-  @@index([templateType, isActive])
+  @@index([isActive])
   @@map("teacher_contract_templates")
 }
 

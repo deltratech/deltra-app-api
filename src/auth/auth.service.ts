@@ -33,6 +33,18 @@ const SAFE_USER_SELECT = {
   createdAt: true,
 };
 
+const SCHOOL_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  type: true,
+  status: true,
+  parentId: true,
+  createdAt: true,
+  updatedAt: true,
+  settings: true,
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -272,13 +284,19 @@ export class AuthService {
       if (!user) throw new NotFoundException('User not found');
       return user;
     }
-    const db = this.tenantPrisma.forSchema(toSchemaName(tenantSlug!));
-    const user = await db.user.findFirst({
-      where: { id: userId, deletedAt: null, status: 'active' },
-      select: SAFE_USER_SELECT,
-    });
+    const [school, user] = await Promise.all([
+      this.prisma.tenant.findFirst({
+        where: { slug: tenantSlug, deletedAt: null },
+        select: SCHOOL_SELECT,
+      }),
+      this.tenantPrisma.forSchema(toSchemaName(tenantSlug!)).user.findFirst({
+        where: { id: userId, deletedAt: null, status: 'active' },
+        select: SAFE_USER_SELECT,
+      }),
+    ]);
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    if (!school) throw new NotFoundException('School not found');
+    return { ...user, school };
   }
 
   // ── Forgot Password ──────────────────────────────────────────────────────────

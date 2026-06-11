@@ -1,17 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
-import { TeacherContractTemplateType } from './create-teacher-contract.dto';
 
 export class CreateUploadedTeacherContractDto {
   @ApiProperty({ description: 'Teacher profile ID linked to uploaded contract' })
   @IsUUID()
   teacherProfileId: string;
-
-  @ApiPropertyOptional({ enum: TeacherContractTemplateType, description: 'If omitted, inferred from employment status' })
-  @IsOptional()
-  @IsEnum(TeacherContractTemplateType)
-  templateType?: TeacherContractTemplateType;
 
   @ApiProperty({ example: '2026-07-01' })
   @IsDateString()
