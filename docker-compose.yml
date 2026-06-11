@@ -6,7 +6,7 @@ services:
     container_name: deltra-api
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-4000}:4000"
     env_file:
       - .env
     environment:
@@ -99,9 +99,9 @@ services:
     restart: unless-stopped
     command:
       - gotenberg
-      - --api-port=3000
+      - --api-port=4000
     ports:
-      - "3001:3000"
+      - "4001:4000"
     networks:
       - deltra-network
 

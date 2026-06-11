@@ -13,6 +13,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SchedulesService } from './schedules.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -24,6 +25,8 @@ import { UpdatePeriodTemplateDto } from './dto/update-period-template.dto';
 import { CreatePeriodRowDto } from './dto/create-period-row.dto';
 import { UpdatePeriodRowDto } from './dto/update-period-row.dto';
 
+type CurrentUserContext = { userId: string; role?: string };
+
 @ApiTags('Schedules')
 @ApiBearerAuth()
 @Controller('schedules')
@@ -33,22 +36,20 @@ export class SchedulesController {
   @Get()
   @ApiOperation({ summary: 'List schedule documents with entries' })
   @ApiQuery({ name: 'classroomId', required: false })
-  @ApiQuery({ name: 'academicYear', required: false })
-  @ApiQuery({ name: 'semester', required: false, type: Number })
+  @ApiQuery({ name: 'academicYearId', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ScheduleStatus })
   @ApiQuery({ name: 'search', required: false, description: 'Search by classroom name' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
     @Query('classroomId') classroomId?: string,
-    @Query('academicYear') academicYear?: string,
+    @Query('academicYearId') academicYearId?: string,
     @Query('status') status?: ScheduleStatus,
     @Query('search') search?: string,
-    @Query('semester', new ParseIntPipe({ optional: true })) semester?: number,
     @Query('page', new ParseIntPipe({ optional: true })) page?: number,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.service.findAll({ classroomId, academicYear, semester, status, search, page, limit });
+    return this.service.findAll({ classroomId, academicYearId, status, search, page, limit });
   }
 
   @Get('period-templates')
@@ -90,38 +91,54 @@ export class SchedulesController {
 
   @Get('by-class/:classroomId')
   @ApiOperation({ summary: 'Get schedule documents for a class' })
-  @ApiQuery({ name: 'academicYear', required: false })
-  @ApiQuery({ name: 'semester', required: false, type: Number })
+  @ApiQuery({ name: 'academicYearId', required: false })
   findByClass(
     @Param('classroomId', ParseUUIDPipe) classroomId: string,
-    @Query('academicYear') academicYear?: string,
-    @Query('semester', new ParseIntPipe({ optional: true })) semester?: number,
+    @Query('academicYearId') academicYearId?: string,
   ) {
-    return this.service.findByClass(classroomId, academicYear, semester);
+    return this.service.findByClass(classroomId, academicYearId);
   }
 
   @Get('by-teacher/:teacherProfileId')
   @ApiOperation({ summary: 'Get schedule documents containing a teacher' })
-  @ApiQuery({ name: 'academicYear', required: false })
-  @ApiQuery({ name: 'semester', required: false, type: Number })
+  @ApiQuery({ name: 'academicYearId', required: false })
   findByTeacher(
     @Param('teacherProfileId', ParseUUIDPipe) teacherProfileId: string,
-    @Query('academicYear') academicYear?: string,
-    @Query('semester', new ParseIntPipe({ optional: true })) semester?: number,
+    @Query('academicYearId') academicYearId?: string,
   ) {
-    return this.service.findByTeacher(teacherProfileId, academicYear, semester);
+    return this.service.findByTeacher(teacherProfileId, academicYearId);
   }
 
   @Get('by-student/:studentProfileId')
   @ApiOperation({ summary: 'Get schedule documents for a student via active enrollment' })
-  @ApiQuery({ name: 'academicYear', required: false })
-  @ApiQuery({ name: 'semester', required: false, type: Number })
+  @ApiQuery({ name: 'academicYearId', required: false })
   findByStudent(
     @Param('studentProfileId', ParseUUIDPipe) studentProfileId: string,
-    @Query('academicYear') academicYear?: string,
-    @Query('semester', new ParseIntPipe({ optional: true })) semester?: number,
+    @Query('academicYearId') academicYearId?: string,
   ) {
-    return this.service.findByStudent(studentProfileId, academicYear, semester);
+    return this.service.findByStudent(studentProfileId, academicYearId);
+  }
+
+  @Get('student/me')
+  @ApiOperation({ summary: 'Get published schedule documents for the current student' })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  findMyStudentSchedules(
+    @CurrentUser() user: CurrentUserContext,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.service.findForCurrentStudent(user, academicYearId);
+  }
+
+  @Get('parent')
+  @ApiOperation({ summary: 'Get published schedule documents for the current parent linked students' })
+  @ApiQuery({ name: 'studentProfileId', required: false })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  findParentSchedules(
+    @CurrentUser() user: CurrentUserContext,
+    @Query('studentProfileId') studentProfileId?: string,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.service.findForParent(user, { studentProfileId, academicYearId });
   }
 
   @Get(':id')

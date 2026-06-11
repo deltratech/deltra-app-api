@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateHomeroomAssignmentDto {
   @ApiProperty({ description: 'Classroom ID' })
@@ -10,15 +10,9 @@ export class CreateHomeroomAssignmentDto {
   @IsUUID()
   teacherProfileId: string;
 
-  @ApiProperty({ example: '2025/2026' })
-  @IsString()
-  @IsNotEmpty()
-  academicYear: string;
-
-  @ApiProperty({ example: 1 })
-  @IsInt()
-  @Min(1)
-  semester: number;
+  @ApiProperty({ description: 'Academic year ID' })
+  @IsUUID()
+  academicYearId: string;
 
   @ApiPropertyOptional()
   @IsOptional()

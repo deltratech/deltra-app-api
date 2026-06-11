@@ -21,7 +21,15 @@ const TEACHER_SELECT = {
 };
 
 const ASSIGNMENT_INCLUDE = {
-  classroom: { select: { id: true, name: true, gradeLevel: true, academicYear: true, semester: true } },
+  academicYear: { select: { id: true, label: true, semester: true } },
+  // The assignment already carries `academicYear`, so the classroom doesn't re-embed it.
+  classroom: {
+    select: {
+      id: true,
+      name: true,
+      gradeLevel: true,
+    },
+  },
   teacher: { select: TEACHER_SELECT },
 };
 
@@ -117,8 +125,7 @@ export class HomeroomAssignmentsService {
         data: {
           classroomId: dto.classroomId,
           teacherProfileId: dto.teacherProfileId,
-          academicYear: dto.academicYear,
-          semester: dto.semester,
+          academicYearId: dto.academicYearId,
           notes: dto.notes,
         },
         include: ASSIGNMENT_INCLUDE,
@@ -155,8 +162,7 @@ export class HomeroomAssignmentsService {
       data: {
         classroomId: dto.classroomId,
         teacherProfileId: dto.teacherProfileId,
-        academicYear: dto.academicYear,
-        semester: dto.semester,
+        academicYearId: dto.academicYearId,
         notes: dto.notes,
       },
       include: ASSIGNMENT_INCLUDE,

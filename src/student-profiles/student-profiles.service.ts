@@ -24,7 +24,13 @@ const PROFILE_INCLUDE = {
     where: { status: 'active' as const },
     include: {
       classroom: {
-        select: { id: true, name: true, gradeLevel: true, academicYear: true, semester: true },
+        select: {
+          id: true,
+          name: true,
+          gradeLevel: true,
+          academicYearId: true,
+          academicYear: { select: { id: true, label: true, semester: true } },
+        },
       },
     },
   },

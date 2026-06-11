@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { ScheduleStatus } from '../../common/enums/schedule-status.enum';
 
 export class CreateScheduleDto {
@@ -7,16 +7,9 @@ export class CreateScheduleDto {
   @IsUUID()
   classroomId: string;
 
-  @ApiProperty({ example: '2025/2026' })
-  @IsString()
-  @IsNotEmpty()
-  academicYear: string;
-
-  @ApiProperty({ example: 1, description: '1 or 2' })
-  @IsInt()
-  @Min(1)
-  @Max(2)
-  semester: number;
+  @ApiProperty({ description: 'Academic year ID' })
+  @IsUUID()
+  academicYearId: string;
 
   @ApiPropertyOptional({ enum: ScheduleStatus, default: ScheduleStatus.draft })
   @IsOptional()

@@ -1,5 +1,6 @@
 FROM node:24-alpine AS base
 WORKDIR /app
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=public"
 COPY package*.json ./
 
 FROM base AS development
