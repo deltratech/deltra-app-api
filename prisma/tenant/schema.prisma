@@ -1363,6 +1363,8 @@ model AdmissionLevelSetting {
   updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("admission_level_settings")
+}
+
 model AcademicYear {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   label     String // '2025/2026'

@@ -755,15 +755,14 @@ export class TeacherContractsService {
         }
       } else if (sideEffect === 'homeroom') {
         const classroomId: string | undefined = data.classroomId;
-        const academicYear: string = String(data.academicYear ?? '');
-        const semester = Number(data.semester ?? 1);
-        if (classroomId && academicYear) {
+        const academicYearId: string = String(data.academicYearId ?? data.academicYear ?? '');
+        if (classroomId && academicYearId) {
           await this.tenantPrisma.client.homeroomAssignment.updateMany({
-            where: { classroomId, academicYear, semester, isActive: true, deletedAt: null },
+            where: { classroomId, academicYearId, isActive: true, deletedAt: null },
             data: { isActive: false, endedAt: new Date() },
           });
           await this.tenantPrisma.client.homeroomAssignment.create({
-            data: { classroomId, teacherProfileId, academicYear, semester, isActive: true },
+            data: { classroomId, teacherProfileId, academicYearId, isActive: true },
           });
           const teacher = await this.tenantPrisma.client.teacherProfile.findFirst({ where: { id: teacherProfileId }, select: { userId: true } });
           if (teacher?.userId) {
