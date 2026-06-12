@@ -2,9 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { randomUUID } from 'crypto';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { AdmissionsService } from './admissions.service';
+import { StagesService } from './stages.service';
 import { FeesService } from './fees.service';
 import { CreatePpdbFormDto, PublicSubmitDto, UpdatePpdbFormDto } from './dto/ppdb.dto';
-import { AdmissionSchoolLevel, AdmissionStage, AdmissionDocType } from './admissions.enums';
+import { AdmissionKfStatusSource, AdmissionDocType } from './admissions.enums';
 import { getTenantContext } from '../tenant/tenant.context';
 import {
   DEFAULT_FIELDS, DEFAULT_REQUIRED_DOCS, type PpdbField, type PpdbRequiredDoc,
@@ -15,6 +16,7 @@ export class PpdbService {
   constructor(
     private readonly tenantPrisma: PrismaTenantService,
     private readonly admissions: AdmissionsService,
+    private readonly stages: StagesService,
     private readonly fees: FeesService,
   ) {}
 
@@ -135,12 +137,12 @@ export class PpdbService {
       throw new ForbiddenException('The enrollment cut-off date for this level has passed');
     }
 
-    // Auto-accept when there's no test gate (pre-school direct admission); otherwise
-    // primary/secondary applicants land in kf_pending until KF status is resolved.
-    const isPreschool = dto.schoolLevel === AdmissionSchoolLevel.preschool;
-    const stage = !setting.hasTestGate
-      ? AdmissionStage.accepted
-      : (isPreschool ? AdmissionStage.applied : AdmissionStage.kf_pending);
+    // New applications land at the entry stage. When there's no test gate
+    // (pre-school direct admission), skip straight to the offer/payment stage so
+    // the parent can pick a package immediately.
+    const entryKey = await this.stages.entryKey();
+    const offerKey = await this.stages.keyByRole('offer');
+    const stageKey = !setting.hasTestGate && offerKey ? offerKey : entryKey;
 
     const app = await this.admissions.create({
       applicantName: dto.applicantName,
@@ -153,7 +155,7 @@ export class PpdbService {
       schoolLevel: dto.schoolLevel,
       gradeLabel: dto.gradeLabel,
       academicYear: form.academicYear,
-      stage,
+      stageKey,
     });
     if (dto.formData && Object.keys(dto.formData).length) {
       await this.apps.update({ where: { id: app.id }, data: { formDataJson: dto.formData as any } });
@@ -199,9 +201,13 @@ export class PpdbService {
     });
     if (!app) throw new NotFoundException('Application not found');
 
-    // When an offer is pending, surface the dev-fee packages the parent may choose from.
+    // Resolve the current stage definition (label + role drive the parent UI).
+    const def = (await this.stages.list()).find((s) => s.key === app.stageKey) ?? null;
+    const stageRole = def?.role ?? 'generic';
+
+    // At the offer stage, surface the dev-fee packages the parent may choose from.
     let packages: Array<{ id: string; durationLabel: string; amount: number; studentCategory: string | null }> = [];
-    if (app.stage === AdmissionStage.offer_pending) {
+    if (stageRole === 'offer') {
       const { devFeeTiers } = await this.fees.applicableFor(app.id);
       packages = devFeeTiers.map((t) => ({ id: t.id, durationLabel: t.durationLabel, amount: t.amount, studentCategory: t.studentCategory }));
     }
@@ -219,10 +225,12 @@ export class PpdbService {
       schoolLevel: app.schoolLevel,
       gradeLabel: app.gradeLabel,
       academicYear: app.academicYear,
-      stage: app.stage,
+      stage: app.stageKey,
+      stageLabel: def?.publicLabel || def?.label || app.stageKey,
+      stageRole,
       testDate: app.testDate,
       selectedDevFeeTierId: app.selectedDevFeeTierId,
-      needsKfProof: app.stage === AdmissionStage.kf_pending,
+      needsKfProof: app.kfStatusSource === AdmissionKfStatusSource.unverified,
       letter: app.letterUrl ? { url: app.letterUrl, issuedAt: app.letterIssuedAt } : null,
       documents: app.documents,
       requiredDocuments,
@@ -253,18 +261,21 @@ export class PpdbService {
   /** Parent selects a development-fee package; confirms the offer. */
   async selectPackage(token: string, devFeeTierId: string) {
     const app = await this.findByPublicToken(token);
-    if (app.stage !== AdmissionStage.offer_pending && app.stage !== AdmissionStage.accepted) {
+    const role = await this.stages.roleOf(app.stageKey);
+    if (role !== 'offer' && role !== 'accepted') {
       throw new BadRequestException('No package selection is open for this application');
     }
     const tier = await this.tenantPrisma.client.admissionDevelopmentFeeTier.findFirst({
       where: { id: devFeeTierId, deletedAt: null },
     });
     if (!tier) throw new NotFoundException('Package not found');
+    // Selecting a package confirms the offer: advance to the `accepted` stage if one exists.
+    const acceptedKey = role === 'offer' ? await this.stages.keyByRole('accepted') : null;
     await this.apps.update({
       where: { id: app.id },
       data: {
         selectedDevFeeTierId: devFeeTierId,
-        ...(app.stage === AdmissionStage.offer_pending ? { stage: AdmissionStage.accepted } : {}),
+        ...(acceptedKey ? { stageKey: acceptedKey } : {}),
       },
     });
     return { ok: true };

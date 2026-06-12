@@ -18,19 +18,6 @@ export enum AdmissionKfStatusSource {
   not_applicable = 'not_applicable',
 }
 
-export enum AdmissionStage {
-  applied = 'applied',
-  kf_pending = 'kf_pending',
-  document_review = 'document_review',
-  tested = 'tested',
-  passed = 'passed',
-  failed = 'failed',
-  offer_pending = 'offer_pending',
-  accepted = 'accepted',
-  enrolled = 'enrolled',
-  rejected = 'rejected',
-}
-
 export enum AdmissionDocStatus {
   pending = 'pending',
   verified = 'verified',

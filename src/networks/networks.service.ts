@@ -223,14 +223,14 @@ export class NetworksService {
     };
   }
 
-  async listUsersBySchool(user: NetworkUser, schoolId: string, options: PaginationOptions = {}) {
-    const { page = 1, limit = 20 } = options;
+  async listUsersBySchool(user: NetworkUser, schoolId: string, options: PaginationOptions & { role?: string } = {}) {
+    const { page = 1, limit = 20, role } = options;
     const networkId = this.requireNetworkAccess(user);
     const school = await this.findBranch(networkId, schoolId);
     const skip = (page - 1) * limit;
     const [users, total] = await Promise.all([
-      this.listSchoolUsers(school, { skip, take: limit }),
-      this.countSchoolUsers(school),
+      this.listSchoolUsers(school, { skip, take: limit }, role),
+      this.countSchoolUsers(school, role),
     ]);
     const data = users.map((schoolUser) => ({
       ...schoolUser,
@@ -450,19 +450,19 @@ export class NetworksService {
     return branch;
   }
 
-  private async listSchoolUsers(school: { slug: string }, pagination?: { skip: number; take: number }) {
+  private async listSchoolUsers(school: { slug: string }, pagination?: { skip: number; take: number }, role?: string) {
     const db = this.tenantPrisma.forSchema(toSchemaName(school.slug));
     return db.user.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...(role ? { role: role as any } : {}) },
       select: USER_SELECT,
       ...(pagination ?? {}),
       orderBy: [{ role: 'asc' }, { fullName: 'asc' }],
     });
   }
 
-  private async countSchoolUsers(school: { slug: string }) {
+  private async countSchoolUsers(school: { slug: string }, role?: string) {
     const db = this.tenantPrisma.forSchema(toSchemaName(school.slug));
-    return db.user.count({ where: { deletedAt: null } });
+    return db.user.count({ where: { deletedAt: null, ...(role ? { role: role as any } : {}) } });
   }
 
   private toSchoolSummary(school: { id: string; name: string; slug: string; type: string; parentId: string | null }) {

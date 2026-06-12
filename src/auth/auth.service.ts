@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -56,7 +57,7 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
-    if (!dto.tenantSlug) return this.loginAsSuperAdmin(dto);
+    if (!dto.tenantSlug) return this.loginAsPlatformUser(dto);
     return this.loginAsTenant(dto as LoginDto & { tenantSlug: string });
   }
 
@@ -96,7 +97,13 @@ export class AuthService {
     return user;
   }
 
-  private async loginAsSuperAdmin(dto: LoginDto) {
+  /**
+   * Authenticate a platform user (superadmin or network_admin) — they live in
+   * `public.platform_users`, not in any tenant schema. When `expectedNetworkId`
+   * is given (login arrived via a network's slug/subdomain) the user must belong
+   * to that network — unless they're a superadmin, who may log in anywhere.
+   */
+  private async loginAsPlatformUser(dto: LoginDto, expectedNetworkId?: string) {
     const user = await this.prisma.platformUser.findFirst({
       where: {
         OR: [{ email: dto.identifier }, { username: dto.identifier }],
@@ -108,6 +115,11 @@ export class AuthService {
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    if (expectedNetworkId && user.role !== 'superadmin'
+      && (user as typeof user & { networkId?: string | null }).networkId !== expectedNetworkId) {
+      throw new UnauthorizedException('This account does not belong to this network');
+    }
 
     await this.prisma.platformUser.update({
       where: { id: user.id },
@@ -150,6 +162,12 @@ export class AuthService {
     if ((tenant as typeof tenant & { status?: string }).status === 'suspended')
       throw new UnauthorizedException(`Tenant '${dto.tenantSlug}' is suspended`);
 
+    // A network/foundation has no schema of its own — its slug/subdomain is an
+    // entry point for that network's admin, who lives in public.platform_users.
+    if ((tenant as typeof tenant & { type?: string }).type === 'network') {
+      return this.loginAsPlatformUser(dto, tenant.id);
+    }
+
     const db = this.tenantPrisma.forSchema(toSchemaName(dto.tenantSlug));
 
     const user = await db.user.findFirst({
@@ -159,7 +177,9 @@ export class AuthService {
         status: 'active',
       },
     });
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    // No school-schema user with this identifier — a network admin (or superadmin)
+    // may be signing in at one of their child-school slugs (they live in public.platform_users).
+    if (!user) return this.loginNetworkAdminIntoSchool(dto, tenant);
 
     if (!user.passwordHash)
       throw new UnauthorizedException('This account uses SSO — password login is disabled');
@@ -194,15 +214,69 @@ export class AuthService {
     };
   }
 
+  /** A network admin (or superadmin) signing in at one of their child-school slugs.
+   *  They authenticate against public.platform_users and receive a session scoped to
+   *  that school — the token carries the school's tenant context + their platform role,
+   *  so tenant-scoped routes resolve the school schema while RBAC sees network_admin. */
+  private async loginNetworkAdminIntoSchool(
+    dto: LoginDto & { tenantSlug: string },
+    tenant: { id: string; slug: string; name: string; parentId: string | null },
+  ) {
+    const pu = await this.prisma.platformUser.findFirst({
+      where: { OR: [{ email: dto.identifier }, { username: dto.identifier }], status: 'active', deletedAt: null },
+    });
+    if (!pu) throw new UnauthorizedException('Invalid credentials');
+    const valid = await bcrypt.compare(dto.password, pu.passwordHash);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    const networkId = (pu as typeof pu & { networkId?: string | null }).networkId ?? null;
+    const isSuperAdmin = pu.role === 'superadmin';
+    const ownsSchool = pu.role === 'network_admin' && !!networkId && networkId === tenant.parentId;
+    if (!isSuperAdmin && !ownsSchool) {
+      throw new UnauthorizedException('You do not have access to this school');
+    }
+
+    await this.prisma.platformUser.update({ where: { id: pu.id }, data: { lastLoginAt: new Date() } });
+
+    const payload: JwtPayload = {
+      sub: pu.id,
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+      role: pu.role,
+      isPlatformUser: true,
+      ...(isSuperAdmin ? { isSuperAdmin: true } : {}),
+      ...(networkId ? { networkId } : {}),
+    };
+    const accessToken = this.jwt.sign(payload);
+    const refreshToken = await this.generateRefreshToken(pu.id, tenant.id, tenant.slug, isSuperAdmin, true, pu.role, networkId);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: { id: pu.id, email: pu.email, username: pu.username, fullName: pu.fullName, role: pu.role, networkId },
+      tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
+    };
+  }
+
   async refresh(refreshToken: string) {
     const payload = await this.redis.getRefreshToken(refreshToken);
     if (!payload) throw new UnauthorizedException('Invalid or expired refresh token');
 
     await this.redis.deleteRefreshToken(refreshToken);
 
-    const newAccessToken = payload.isPlatformUser
-      ? this.signPlatformToken(payload.userId, payload.role, payload.networkId, payload.isSuperAdmin)
-      : this.signToken(payload.userId, payload.tenantId!, payload.tenantSlug!, payload.role);
+    // Rebuild the access token preserving whatever scope the session had — tenant
+    // context (school users + a network admin inside a school) and/or platform flags.
+    const newAccessToken = this.jwt.sign({
+      sub: payload.userId,
+      role: payload.role,
+      ...(payload.tenantId ? { tenantId: payload.tenantId } : {}),
+      ...(payload.tenantSlug ? { tenantSlug: payload.tenantSlug } : {}),
+      ...(payload.isPlatformUser ? { isPlatformUser: true } : {}),
+      ...(payload.isSuperAdmin ? { isSuperAdmin: true } : {}),
+      ...(payload.networkId ? { networkId: payload.networkId } : {}),
+      ...(payload.impersonatorId ? { impersonatorId: payload.impersonatorId } : {}),
+      ...(payload.impersonatorRole ? { impersonatorRole: payload.impersonatorRole } : {}),
+    } as JwtPayload);
 
     const newRefreshToken = await this.generateRefreshToken(
       payload.userId,
@@ -212,6 +286,8 @@ export class AuthService {
       payload.isPlatformUser,
       payload.role,
       payload.networkId,
+      payload.impersonatorId,
+      payload.impersonatorRole,
     );
 
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -220,6 +296,102 @@ export class AuthService {
   async logout(refreshToken: string) {
     await this.redis.deleteRefreshToken(refreshToken);
     return { message: 'Logged out successfully.' };
+  }
+
+  // ── Impersonation ("act as" a school user) ──────────────────────────────────
+  private static readonly IMPERSONATABLE_ROLES = ['school_admin', 'principal', 'finance', 'teacher', 'admission'];
+
+  /** A foundation/network admin (or superadmin) acts as a specific user inside one
+   *  of their child schools. The minted token's `sub` is the target user (so writes
+   *  attribute to a real in-schema user), with the platform admin recorded as the
+   *  impersonator for audit + exit. */
+  async impersonate(
+    actor: { userId: string; role?: string; isPlatformUser?: boolean; isSuperAdmin?: boolean; networkId?: string | null },
+    dto: { tenantSlug: string; userId: string },
+  ) {
+    const isSuper = !!actor.isSuperAdmin || actor.role === 'superadmin';
+    const isNetworkAdmin = !!actor.isPlatformUser && actor.role === 'network_admin';
+    if (!isSuper && !isNetworkAdmin) {
+      throw new ForbiddenException('Only foundation/network admins can act as another user');
+    }
+
+    const tenant = await this.prisma.tenant.findFirst({ where: { slug: dto.tenantSlug, deletedAt: null } });
+    if (!tenant) throw new NotFoundException(`School '${dto.tenantSlug}' not found`);
+    if ((tenant as typeof tenant & { type?: string }).type !== 'school') {
+      throw new BadRequestException('You can only act as a user inside a school');
+    }
+    if (!isSuper && tenant.parentId !== actor.networkId) {
+      throw new ForbiddenException('This school is not in your network');
+    }
+
+    const db = this.tenantPrisma.forSchema(toSchemaName(tenant.slug));
+    const target = await db.user.findFirst({ where: { id: dto.userId, deletedAt: null, status: 'active' } });
+    if (!target) throw new NotFoundException('Target user not found in this school');
+    if (!AuthService.IMPERSONATABLE_ROLES.includes(target.role as string)) {
+      throw new BadRequestException(`You cannot act as a ${target.role}`);
+    }
+
+    const payload: JwtPayload = {
+      sub: target.id,
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+      role: target.role as string,
+      impersonatorId: actor.userId,
+      impersonatorRole: actor.role,
+      ...(actor.networkId ? { networkId: actor.networkId } : {}),
+    };
+    const accessToken = this.jwt.sign(payload);
+    const refreshToken = await this.generateRefreshToken(
+      target.id, tenant.id, tenant.slug, false, false, target.role as string,
+      actor.networkId ?? null, actor.userId, actor.role,
+    );
+
+    const networkId = actor.networkId ?? tenant.parentId;
+    if (networkId) {
+      await this.prisma.foundationAuditLog.create({
+        data: {
+          networkId, actorId: actor.userId, action: 'impersonate_start',
+          resource: 'user', resourceId: target.id,
+          metadata: { schoolSlug: tenant.slug, role: target.role },
+        },
+      }).catch(() => undefined);
+    }
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: target.id, email: target.email, username: target.username,
+        fullName: target.fullName, avatarUrl: target.avatarUrl, role: target.role,
+      },
+      tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
+      impersonator: { id: actor.userId, role: actor.role },
+    };
+  }
+
+  /** End an impersonation session: re-mint a foundation session for the original
+   *  platform admin (identified by the token's impersonatorId). */
+  async stopImpersonation(actor: { impersonatorId?: string }) {
+    if (!actor.impersonatorId) throw new BadRequestException('Not in an impersonation session');
+    const pu = await this.prisma.platformUser.findFirst({ where: { id: actor.impersonatorId, deletedAt: null } });
+    if (!pu) throw new UnauthorizedException('Original account not found');
+
+    const isSuperAdmin = pu.role === 'superadmin';
+    const networkId = (pu as typeof pu & { networkId?: string | null }).networkId ?? null;
+    const accessToken = this.signPlatformToken(pu.id, pu.role, networkId, isSuperAdmin);
+    const refreshToken = await this.generateRefreshToken(pu.id, undefined, undefined, isSuperAdmin, true, pu.role, networkId);
+
+    if (networkId) {
+      await this.prisma.foundationAuditLog.create({
+        data: { networkId, actorId: pu.id, action: 'impersonate_stop', resource: 'user', metadata: {} },
+      }).catch(() => undefined);
+    }
+
+    return {
+      accessToken,
+      refreshToken,
+      user: { id: pu.id, email: pu.email, username: pu.username, fullName: pu.fullName, role: pu.role, networkId },
+    };
   }
 
   async register(dto: RegisterDto, tenantSlug: string) {
@@ -366,9 +538,14 @@ export class AuthService {
     isPlatformUser?: boolean,
     role?: string,
     networkId?: string | null,
+    impersonatorId?: string,
+    impersonatorRole?: string,
   ): Promise<string> {
     const token = randomBytes(40).toString('hex');
-    await this.redis.saveRefreshToken(token, { userId, tenantId, tenantSlug, isSuperAdmin, isPlatformUser, role, networkId: networkId ?? undefined });
+    await this.redis.saveRefreshToken(token, {
+      userId, tenantId, tenantSlug, isSuperAdmin, isPlatformUser, role,
+      networkId: networkId ?? undefined, impersonatorId, impersonatorRole,
+    });
     return token;
   }
 }

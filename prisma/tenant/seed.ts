@@ -28,7 +28,17 @@ async function upsertUser(
 ) {
   const where = data.email ? { email: data.email } : { username: data.username! };
   const existing = await prisma.user.findFirst({ where });
-  if (existing) return existing;
+  if (existing) {
+    return prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        passwordHash,
+        role: data.role,
+        status: 'active',
+        deletedAt: null,
+      },
+    });
+  }
 
   return prisma.user.create({
     data: {
@@ -51,7 +61,7 @@ function toTime(minutes: number) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const PASSWORD_HASH = await bcrypt.hash('password123', 10);
+  const PASSWORD_HASH = await bcrypt.hash('password123', 12);
 
   // ── 1. Classroom ─────────────────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RequireApiKey } from '../common/decorators/require-api-key.decorator';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { CreateSuperadminDto } from './dto/create-superadmin.dto';
+import { ImpersonateDto } from './dto/impersonate.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -48,6 +49,22 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout — invalidates the provided refresh token' })
   logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('impersonate')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Act as a school user (foundation/network admin only)' })
+  impersonate(@CurrentUser() actor: Record<string, unknown>, @Body() dto: ImpersonateDto) {
+    return this.authService.impersonate(actor as any, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('impersonate/stop')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'End an impersonation session — return to the foundation account' })
+  stopImpersonation(@CurrentUser() actor: Record<string, unknown>) {
+    return this.authService.stopImpersonation(actor as any);
   }
 
   @Public()

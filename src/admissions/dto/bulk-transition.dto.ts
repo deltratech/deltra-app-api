@@ -1,16 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min, ValidateNested,
+  IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AdmissionSchoolLevel, AdmissionStage } from '../admissions.enums';
+import { AdmissionSchoolLevel } from '../admissions.enums';
 
-export type BulkAction = 'assign_test' | 'record_result' | 'decision' | 'send_offer' | 'enroll' | 'set_stage' | 'block' | 'unblock';
+export type BulkAction = 'set_stage' | 'block' | 'unblock';
 
 class BulkFilterDto {
-  @ApiPropertyOptional({ enum: AdmissionStage })
-  @IsOptional() @IsEnum(AdmissionStage)
-  stage?: AdmissionStage;
+  @ApiPropertyOptional({ description: 'Filter by stage key' })
+  @IsOptional() @IsString()
+  stageKey?: string;
 
   @ApiPropertyOptional({ enum: AdmissionSchoolLevel })
   @IsOptional() @IsEnum(AdmissionSchoolLevel)
@@ -26,8 +26,8 @@ class BulkFilterDto {
 }
 
 export class BulkTransitionDto {
-  @ApiProperty({ enum: ['assign_test', 'record_result', 'decision', 'send_offer', 'enroll'] })
-  @IsEnum({ assign_test: 'assign_test', record_result: 'record_result', decision: 'decision', send_offer: 'send_offer', enroll: 'enroll', set_stage: 'set_stage', block: 'block', unblock: 'unblock' })
+  @ApiProperty({ enum: ['set_stage', 'block', 'unblock'] })
+  @IsEnum({ set_stage: 'set_stage', block: 'block', unblock: 'unblock' })
   action: BulkAction;
 
   @ApiPropertyOptional({ type: [String], description: 'Explicit applicant ids' })
@@ -39,25 +39,13 @@ export class BulkTransitionDto {
   filter?: BulkFilterDto;
 
   // ── action payloads ──
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Target stage key for set_stage' })
+  @IsOptional() @IsString()
+  stageKey?: string;
+
+  @ApiPropertyOptional({ description: 'Test date when the target stage has the `test` role' })
   @IsOptional() @IsDateString()
   testDate?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional() @IsBoolean()
-  passed?: boolean;
-
-  @ApiPropertyOptional({ minimum: 0, maximum: 100 })
-  @IsOptional() @IsInt() @Min(0) @Max(100)
-  testScore?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional() @IsBoolean()
-  accepted?: boolean;
-
-  @ApiPropertyOptional({ enum: AdmissionStage, description: 'Target stage for set_stage' })
-  @IsOptional() @IsEnum(AdmissionStage)
-  stage?: AdmissionStage;
 
   @ApiPropertyOptional({ description: 'Reason for block' })
   @IsOptional() @IsString()

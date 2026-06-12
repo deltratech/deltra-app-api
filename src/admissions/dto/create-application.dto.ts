@@ -4,7 +4,7 @@ import {
 } from 'class-validator';
 import { Gender } from '../../common/enums/gender.enum';
 import {
-  AdmissionSchoolLevel, AdmissionStudentCategory, AdmissionStage,
+  AdmissionSchoolLevel, AdmissionStudentCategory,
 } from '../admissions.enums';
 
 export class CreateApplicationDto {
@@ -52,9 +52,9 @@ export class CreateApplicationDto {
   @IsOptional() @IsEnum(AdmissionStudentCategory)
   studentCategory?: AdmissionStudentCategory;
 
-  @ApiPropertyOptional({ enum: AdmissionStage })
-  @IsOptional() @IsEnum(AdmissionStage)
-  stage?: AdmissionStage;
+  @ApiPropertyOptional({ description: 'Initial stage key (defaults to the entry stage)' })
+  @IsOptional() @IsString()
+  stageKey?: string;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100 })
   @IsOptional() @IsInt() @Min(0) @Max(100)

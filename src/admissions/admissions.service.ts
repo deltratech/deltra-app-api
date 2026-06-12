@@ -6,12 +6,13 @@ import { StorageService } from '../storage/storage.service';
 import { paginatedResult } from '../common/utils/paginate';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
-import { AssignTestDto, DecisionDto, RecordResultDto } from './dto/transition.dto';
+import { SetStageDto } from './dto/transition.dto';
 import { BulkTransitionDto } from './dto/bulk-transition.dto';
 import { VerifyDocumentDto } from './dto/document.dto';
+import { StagesService } from './stages.service';
 import {
   AdmissionDocStatus, AdmissionDocType, AdmissionKfStatusSource, AdmissionSchoolLevel,
-  AdmissionStage, AdmissionStudentCategory,
+  AdmissionStudentCategory,
 } from './admissions.enums';
 
 const DOC_SELECT = {
@@ -30,6 +31,7 @@ export class AdmissionsService {
   constructor(
     private readonly tenantPrisma: PrismaTenantService,
     private readonly storage: StorageService,
+    private readonly stages: StagesService,
   ) {}
 
   private get db() { return this.tenantPrisma.client.admissionApplication; }
@@ -41,12 +43,12 @@ export class AdmissionsService {
 
   /** Shared where-builder for application filters (list + bulk). */
   private buildApplicationWhere(filters: {
-    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
+    stageKey?: string; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
   }) {
-    const { stage, schoolLevel, academicYear, search } = filters;
+    const { stageKey, schoolLevel, academicYear, search } = filters;
     return {
       deletedAt: null,
-      ...(stage ? { stage } : {}),
+      ...(stageKey ? { stageKey } : {}),
       ...(schoolLevel ? { schoolLevel } : {}),
       ...(academicYear ? { academicYear } : {}),
       ...(search ? {
@@ -60,7 +62,7 @@ export class AdmissionsService {
   }
 
   async findAll(filters: {
-    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string;
+    stageKey?: string; schoolLevel?: AdmissionSchoolLevel; academicYear?: string;
     search?: string; page?: number; limit?: number;
   } = {}) {
     const { page = 1, limit = 20 } = filters;
@@ -80,18 +82,16 @@ export class AdmissionsService {
 
   /** Export all applicants matching the filter as an .xlsx workbook. */
   async exportWorkbook(filters: {
-    stage?: AdmissionStage; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
+    stageKey?: string; schoolLevel?: AdmissionSchoolLevel; academicYear?: string; search?: string;
   } = {}) {
     const rows = await this.db.findMany({
       where: this.buildApplicationWhere(filters),
       include: { documents: { select: { status: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    const stageLabel: Record<string, string> = {
-      applied: 'Applied', kf_pending: 'KF pending', document_review: 'Document review', tested: 'Tested',
-      passed: 'Passed', failed: 'Failed', offer_pending: 'Offer pending', accepted: 'Accepted',
-      enrolled: 'Enrolled', rejected: 'Rejected',
-    };
+    const stageLabel: Record<string, string> = Object.fromEntries(
+      (await this.stages.list()).map((s) => [s.key, s.label]),
+    );
     const levelLabel: Record<string, string> = { preschool: 'Pre-school', primary: 'Primary', secondary: 'Secondary' };
 
     const wb = new ExcelJS.Workbook();
@@ -126,7 +126,7 @@ export class AdmissionsService {
         level: levelLabel[a.schoolLevel] ?? a.schoolLevel,
         grade: a.gradeLabel,
         year: a.academicYear,
-        stage: stageLabel[a.stage] ?? a.stage,
+        stage: stageLabel[a.stageKey] ?? a.stageKey,
         score: a.testScore ?? '',
         docs: documentsStatus(a.documents),
         category: a.studentCategory ? a.studentCategory.replace(/_/g, ' ') : '',
@@ -147,17 +147,21 @@ export class AdmissionsService {
       ...(filters.academicYear ? { academicYear: filters.academicYear } : {}),
       ...(filters.schoolLevel ? { schoolLevel: filters.schoolLevel } : {}),
     };
-    const grouped = await this.db.groupBy({ by: ['stage'], where, _count: { _all: true } });
-    const byStage = Object.fromEntries(
-      Object.values(AdmissionStage).map((s) => [s, 0]),
-    ) as Record<AdmissionStage, number>;
-    for (const g of grouped) byStage[g.stage as AdmissionStage] = g._count._all;
+    const defs = await this.stages.list();
+    const grouped = await this.db.groupBy({ by: ['stageKey'], where, _count: { _all: true } });
+    const byStage = Object.fromEntries(defs.map((d) => [d.key, 0])) as Record<string, number>;
+    for (const g of grouped) byStage[g.stageKey] = (byStage[g.stageKey] ?? 0) + g._count._all;
+
+    const roleOf = new Map(defs.map((d) => [d.key, d.role as string]));
+    const sumByRole = (...roles: string[]) =>
+      Object.entries(byStage).reduce((acc, [k, n]) => acc + (roles.includes(roleOf.get(k) ?? '') ? n : 0), 0);
 
     const total = Object.values(byStage).reduce((a, b) => a + b, 0);
-    const underReview = byStage.applied + byStage.kf_pending + byStage.document_review
-      + byStage.tested + byStage.passed + byStage.offer_pending;
-    const accepted = byStage.accepted + byStage.enrolled;
-    return { total, underReview, accepted, enrolled: byStage.enrolled, rejected: byStage.rejected, byStage };
+    const enrolled = sumByRole('enrolled');
+    const rejected = sumByRole('rejected');
+    const accepted = sumByRole('accepted', 'enrolled', 'offer');
+    const underReview = total - enrolled - rejected;
+    return { total, underReview, accepted, enrolled, rejected, byStage, stages: defs };
   }
 
   async findOne(id: string) {
@@ -202,7 +206,7 @@ export class AdmissionsService {
           ?? (isPreschool ? AdmissionStudentCategory.not_applicable : AdmissionStudentCategory.non_kf),
         kfStatusSource: isPreschool
           ? AdmissionKfStatusSource.not_applicable : AdmissionKfStatusSource.unverified,
-        stage: dto.stage ?? AdmissionStage.applied,
+        stageKey: dto.stageKey ?? (await this.stages.entryKey()),
         testScore: dto.testScore,
         notes: dto.notes,
       },
@@ -227,7 +231,7 @@ export class AdmissionsService {
         gradeLabel: dto.gradeLabel,
         academicYear: dto.academicYear,
         studentCategory: dto.studentCategory,
-        stage: dto.stage,
+        stageKey: dto.stageKey,
         testScore: dto.testScore,
         notes: dto.notes,
       },
@@ -236,51 +240,26 @@ export class AdmissionsService {
     return this.decorate(app);
   }
 
-  async assignTest(id: string, dto: AssignTestDto) {
-    await this.findOne(id);
-    const app = await this.db.update({
-      where: { id },
-      data: { testDate: new Date(dto.testDate), stage: AdmissionStage.tested },
-      include: { documents: { select: DOC_SELECT } },
-    });
-    return this.decorate(app);
+  /** Build the update payload for moving to a stage, applying side-effects by the stage's role. */
+  private async stageData(stageKey: string, extra?: { testDate?: string | null; testScore?: number; resultNotes?: string }) {
+    const role = await this.stages.roleOf(stageKey);
+    const data: Record<string, unknown> = { stageKey };
+    if (extra?.testScore !== undefined) data.testScore = extra.testScore;
+    if (extra?.resultNotes !== undefined) data.resultNotes = extra.resultNotes;
+    if (extra?.testDate !== undefined) data.testDate = extra.testDate ? new Date(extra.testDate) : null;
+    if (role === 'test' && extra?.testDate) data.testDate = new Date(extra.testDate);
+    if (role === 'enrolled') data.enrolledAt = new Date();
+    if (role === 'accepted' || role === 'rejected') data.resultDate = data.resultDate ?? new Date();
+    return data;
   }
 
-  async recordResult(id: string, dto: RecordResultDto) {
+  /** Unified transition: move an application to any stage; role drives side-effects. */
+  async setStage(id: string, dto: SetStageDto) {
     await this.findOne(id);
+    const data = await this.stageData(dto.stageKey, dto);
     const app = await this.db.update({
       where: { id },
-      data: {
-        testScore: dto.testScore,
-        resultNotes: dto.resultNotes,
-        resultDate: new Date(),
-        stage: dto.passed ? AdmissionStage.passed : AdmissionStage.failed,
-      },
-      include: { documents: { select: DOC_SELECT } },
-    });
-    return this.decorate(app);
-  }
-
-  async decide(id: string, dto: DecisionDto) {
-    await this.findOne(id);
-    const app = await this.db.update({
-      where: { id },
-      data: {
-        stage: dto.accepted ? AdmissionStage.accepted : AdmissionStage.rejected,
-        resultNotes: dto.resultNotes,
-        resultDate: new Date(),
-      },
-      include: { documents: { select: DOC_SELECT } },
-    });
-    return this.decorate(app);
-  }
-
-  async enroll(id: string) {
-    const current = await this.findOne(id);
-    if (current.enrolled) return current;
-    const app = await this.db.update({
-      where: { id },
-      data: { stage: AdmissionStage.enrolled, enrolledAt: new Date() },
+      data,
       include: { documents: { select: DOC_SELECT } },
     });
     return this.decorate(app);
@@ -310,9 +289,9 @@ export class AdmissionsService {
   async bulkTransition(dto: BulkTransitionDto) {
     const hasIds = Array.isArray(dto.ids) && dto.ids.length > 0;
     const filter = dto.filter ?? {};
-    const hasScope = !!filter.academicYear || !!filter.stage || !!filter.search;
+    const hasScope = !!filter.academicYear || !!filter.stageKey || !!filter.search;
     if (!hasIds && !hasScope) {
-      throw new BadRequestException('Provide ids, or a filter with at least an academicYear, stage, or search');
+      throw new BadRequestException('Provide ids, or a filter with at least an academicYear, stageKey, or search');
     }
     const where = hasIds
       ? { id: { in: dto.ids! }, deletedAt: null }
@@ -320,32 +299,9 @@ export class AdmissionsService {
 
     let data: Record<string, unknown>;
     switch (dto.action) {
-      case 'assign_test':
-        if (!dto.testDate) throw new BadRequestException('testDate is required for assign_test');
-        data = { testDate: new Date(dto.testDate), stage: AdmissionStage.tested };
-        break;
-      case 'record_result':
-        data = {
-          stage: dto.passed ? AdmissionStage.passed : AdmissionStage.failed,
-          resultDate: new Date(),
-          ...(dto.testScore != null ? { testScore: dto.testScore } : {}),
-        };
-        break;
-      case 'decision':
-        data = {
-          stage: dto.accepted ? AdmissionStage.accepted : AdmissionStage.rejected,
-          resultDate: new Date(),
-        };
-        break;
-      case 'send_offer':
-        data = { stage: AdmissionStage.offer_pending };
-        break;
-      case 'enroll':
-        data = { stage: AdmissionStage.enrolled, enrolledAt: new Date() };
-        break;
       case 'set_stage':
-        if (!dto.stage) throw new BadRequestException('stage is required for set_stage');
-        data = { stage: dto.stage };
+        if (!dto.stageKey) throw new BadRequestException('stageKey is required for set_stage');
+        data = await this.stageData(dto.stageKey, { testDate: dto.testDate });
         break;
       case 'block':
         data = { blockedAt: new Date(), blockReason: dto.reason?.trim() || null };
@@ -424,7 +380,7 @@ export class AdmissionsService {
       orderBy: { uploadedAt: 'desc' },
       include: {
         application: {
-          select: { id: true, applicantName: true, applicationNo: true, gradeLabel: true, stage: true },
+          select: { id: true, applicantName: true, applicationNo: true, gradeLabel: true, stageKey: true },
         },
       },
     });
@@ -461,20 +417,17 @@ export class AdmissionsService {
       },
     });
 
-    // KF gate: verifying/rejecting a `kf_proof` resolves an applicant sitting in kf_pending.
+    // KF is an attribute, not a stage: verifying/rejecting a `kf_proof` resolves the
+    // applicant's KF category without touching the pipeline stage.
     if (doc.documentType === AdmissionDocType.kf_proof) {
-      const app = await this.db.findFirst({ where: { id: doc.applicationId, deletedAt: null } });
-      if (app && app.stage === AdmissionStage.kf_pending) {
-        const verified = dto.status === AdmissionDocStatus.verified;
-        await this.db.update({
-          where: { id: app.id },
-          data: {
-            kfStatusSource: AdmissionKfStatusSource.manual_verified,
-            studentCategory: verified ? AdmissionStudentCategory.kf_student : AdmissionStudentCategory.non_kf,
-            stage: AdmissionStage.applied,
-          },
-        });
-      }
+      const verified = dto.status === AdmissionDocStatus.verified;
+      await this.db.update({
+        where: { id: doc.applicationId },
+        data: {
+          kfStatusSource: AdmissionKfStatusSource.manual_verified,
+          studentCategory: verified ? AdmissionStudentCategory.kf_student : AdmissionStudentCategory.non_kf,
+        },
+      });
     }
     return updated;
   }

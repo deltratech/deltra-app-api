@@ -1081,19 +1081,33 @@ enum AdmissionKfStatusSource {
 }
 
 /// Application workflow stage. Pre-school skips kf/test/offer stages (applied → accepted).
-enum AdmissionStage {
-  applied
-  kf_pending
-  document_review
-  tested
-  passed
-  failed
-  offer_pending
-  accepted
-  enrolled
-  rejected
+/// Semantic role that drives stage automation. Most stages are `generic`.
+enum AdmissionStageRole {
+  entry      // where new applications land
+  test       // moving here prompts a test date
+  offer      // unlocks parent package selection + invoices
+  accepted   // offer accepted
+  enrolled   // terminal success -> enrolledAt
+  rejected   // terminal failure
+  generic    // plain status step
 
-  @@map("admission_stage")
+  @@map("admission_stage_role")
+}
+
+/// A user-defined stage in the admission pipeline (configurable per tenant).
+model AdmissionStageDef {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String             @unique                      // stable slug referenced by applications
+  label       String                                          // admin-facing label
+  publicLabel String?            @map("public_label")         // parent-facing label (falls back to label)
+  role        AdmissionStageRole @default(generic)
+  sortOrder   Int                @default(0) @map("sort_order")
+  color       String?                                         // dot color (tailwind class or hex)
+  isActive    Boolean            @default(true) @map("is_active")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("admission_stage_defs")
 }
 
 enum AdmissionDocStatus {
@@ -1134,7 +1148,7 @@ model AdmissionApplication {
   studentCategory AdmissionStudentCategory @default(not_applicable) @map("student_category")
   kfStatusSource  AdmissionKfStatusSource  @default(not_applicable) @map("kf_status_source")
 
-  stage          AdmissionStage           @default(applied)
+  stageKey       String                   @default("applied") @map("stage_key")  // -> AdmissionStageDef.key
   testDate       DateTime?                @map("test_date") @db.Date
   testScore      Int?                     @map("test_score") @db.SmallInt
   resultDate     DateTime?                @map("result_date") @db.Date
@@ -1160,7 +1174,7 @@ model AdmissionApplication {
   documents      AdmissionDocument[]
   invoices       AdmissionInvoice[]
 
-  @@index([stage])
+  @@index([stageKey])
   @@index([academicYear, schoolLevel])
   @@map("admission_applications")
 }

@@ -8,13 +8,15 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdmissionsService } from './admissions.service';
 import { LettersService } from './letters.service';
+import { StagesService } from './stages.service';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
-import { AssignTestDto, DecisionDto, RecordResultDto } from './dto/transition.dto';
+import { SetStageDto } from './dto/transition.dto';
+import { CreateStageDto, ReorderStagesDto, UpdateStageDto } from './dto/stage.dto';
 import { BulkTransitionDto } from './dto/bulk-transition.dto';
 import { VerifyDocumentDto } from './dto/document.dto';
 import {
-  AdmissionDocStatus, AdmissionDocType, AdmissionSchoolLevel, AdmissionStage,
+  AdmissionDocStatus, AdmissionDocType, AdmissionSchoolLevel,
 } from './admissions.enums';
 
 @ApiTags('Admissions')
@@ -24,18 +26,50 @@ export class AdmissionsController {
   constructor(
     private readonly service: AdmissionsService,
     private readonly letters: LettersService,
+    private readonly stages: StagesService,
   ) {}
+
+  // ── Pipeline stages (configurable) ──────────────────────────────────────────
+  @Get('stages')
+  @ApiOperation({ summary: 'List the configurable admission pipeline stages' })
+  listStages() {
+    return this.stages.list();
+  }
+
+  @Post('stages')
+  @ApiOperation({ summary: 'Add a pipeline stage' })
+  createStage(@Body() dto: CreateStageDto) {
+    return this.stages.create(dto);
+  }
+
+  @Patch('stages/reorder')
+  @ApiOperation({ summary: 'Reorder pipeline stages' })
+  reorderStages(@Body() dto: ReorderStagesDto) {
+    return this.stages.reorder(dto.ids);
+  }
+
+  @Patch('stages/:id')
+  @ApiOperation({ summary: 'Update a pipeline stage' })
+  updateStage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateStageDto) {
+    return this.stages.update(id, dto);
+  }
+
+  @Delete('stages/:id')
+  @ApiOperation({ summary: 'Delete a pipeline stage (if empty)' })
+  removeStage(@Param('id', ParseUUIDPipe) id: string) {
+    return this.stages.remove(id);
+  }
 
   @Get('applications')
   @ApiOperation({ summary: 'List admission applications (PPDB) in this branch' })
-  @ApiQuery({ name: 'stage', enum: AdmissionStage, required: false })
+  @ApiQuery({ name: 'stageKey', required: false })
   @ApiQuery({ name: 'schoolLevel', enum: AdmissionSchoolLevel, required: false })
   @ApiQuery({ name: 'academicYear', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
-    @Query('stage') stage?: AdmissionStage,
+    @Query('stageKey') stageKey?: string,
     @Query('schoolLevel') schoolLevel?: AdmissionSchoolLevel,
     @Query('academicYear') academicYear?: string,
     @Query('search') search?: string,
@@ -43,7 +77,7 @@ export class AdmissionsController {
     @Query('limit') limit?: string,
   ) {
     return this.service.findAll({
-      stage, schoolLevel, academicYear, search,
+      stageKey, schoolLevel, academicYear, search,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
@@ -51,21 +85,21 @@ export class AdmissionsController {
 
   @Get('applications/export')
   @ApiOperation({ summary: 'Export applicants (matching the filter) as an .xlsx file' })
-  @ApiQuery({ name: 'stage', enum: AdmissionStage, required: false })
+  @ApiQuery({ name: 'stageKey', required: false })
   @ApiQuery({ name: 'schoolLevel', enum: AdmissionSchoolLevel, required: false })
   @ApiQuery({ name: 'academicYear', required: false })
   @ApiQuery({ name: 'search', required: false })
   async exportApplications(
     @Res({ passthrough: true }) res: Response,
-    @Query('stage') stage?: AdmissionStage,
+    @Query('stageKey') stageKey?: string,
     @Query('schoolLevel') schoolLevel?: AdmissionSchoolLevel,
     @Query('academicYear') academicYear?: string,
     @Query('search') search?: string,
   ) {
-    const buf = await this.service.exportWorkbook({ stage, schoolLevel, academicYear, search });
+    const buf = await this.service.exportWorkbook({ stageKey, schoolLevel, academicYear, search });
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="ppdb-applicants${stage ? '-' + stage : ''}.xlsx"`,
+      'Content-Disposition': `attachment; filename="ppdb-applicants${stageKey ? '-' + stageKey : ''}.xlsx"`,
     });
     return new StreamableFile(buf);
   }
@@ -107,28 +141,10 @@ export class AdmissionsController {
     return this.service.update(id, dto);
   }
 
-  @Patch('applications/:id/assign-test')
-  @ApiOperation({ summary: 'Assign a test/interview date (→ tested)' })
-  assignTest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignTestDto) {
-    return this.service.assignTest(id, dto);
-  }
-
-  @Patch('applications/:id/result')
-  @ApiOperation({ summary: 'Record test result (→ passed/failed)' })
-  recordResult(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RecordResultDto) {
-    return this.service.recordResult(id, dto);
-  }
-
-  @Patch('applications/:id/decision')
-  @ApiOperation({ summary: 'Accept or reject an applicant' })
-  decide(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto) {
-    return this.service.decide(id, dto);
-  }
-
-  @Patch('applications/:id/enroll')
-  @ApiOperation({ summary: 'Mark an accepted applicant as enrolled' })
-  enroll(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.enroll(id);
+  @Patch('applications/:id/stage')
+  @ApiOperation({ summary: 'Move an application to a stage (role drives side-effects)' })
+  setStage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetStageDto) {
+    return this.service.setStage(id, dto);
   }
 
   @Post('applications/bulk')
