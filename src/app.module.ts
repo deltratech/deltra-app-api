@@ -29,6 +29,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AcademicNotesModule } from './academic-notes/academic-notes.module';
 import { AdmissionsModule } from './admissions/admissions.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
 
 @Module({
@@ -58,6 +59,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
     NotificationsModule,
     AcademicNotesModule,
     AdmissionsModule,
+    AttendanceModule,
     SuperadminModule,
   ],
   controllers: [AppController],

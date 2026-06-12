@@ -22,7 +22,15 @@ const NOTE_INCLUDE = {
   },
   createdBy: { select: { id: true, fullName: true, role: true } },
   subject: { select: { id: true, code: true, name: true } },
-  classroom: { select: { id: true, name: true, gradeLevel: true, academicYear: true, semester: true } },
+  classroom: {
+    select: {
+      id: true,
+      name: true,
+      gradeLevel: true,
+      academicYearId: true,
+      academicYear: { select: { id: true, label: true, semester: true } },
+    },
+  },
 };
 
 @Injectable()

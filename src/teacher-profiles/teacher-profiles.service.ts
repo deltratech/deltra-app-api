@@ -21,7 +21,15 @@ const SUBJECT_INCLUDE = {
     where: { classroom: { deletedAt: null } },
     include: {
       subject:   { select: { id: true, code: true, name: true } },
-      classroom: { select: { id: true, name: true, academicYear: true, semester: true, gradeLevel: true } },
+      classroom: {
+        select: {
+          id: true,
+          name: true,
+          academicYearId: true,
+          academicYear: { select: { id: true, label: true, semester: true } },
+          gradeLevel: true,
+        },
+      },
     },
   },
 };
@@ -75,7 +83,13 @@ export class TeacherProfilesService {
 
     const homeroomClasses = await this.tenantPrisma.client.classroom.findMany({
       where: { homeroomUserId: profile.userId, deletedAt: null },
-      select: { id: true, name: true, academicYear: true, semester: true, gradeLevel: true },
+      select: {
+        id: true,
+        name: true,
+        academicYearId: true,
+        academicYear: { select: { id: true, label: true, semester: true } },
+        gradeLevel: true,
+      },
     });
 
     return { ...profile, homeroomClasses };
@@ -93,7 +107,13 @@ export class TeacherProfilesService {
 
     const homeroomClasses = await this.tenantPrisma.client.classroom.findMany({
       where: { homeroomUserId: userId, deletedAt: null },
-      select: { id: true, name: true, academicYear: true, semester: true, gradeLevel: true },
+      select: {
+        id: true,
+        name: true,
+        academicYearId: true,
+        academicYear: { select: { id: true, label: true, semester: true } },
+        gradeLevel: true,
+      },
     });
 
     return { ...profile, homeroomClasses };

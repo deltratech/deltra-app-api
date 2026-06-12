@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -13,6 +13,9 @@ import { paginatedResult } from '../common/utils/paginate';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getTenantContext } from '../tenant/tenant.context';
 import { NotificationCategory, NotificationPriority, NotificationSourceType } from '../common/enums/notification.enum';
+import { UserRole } from '../common/enums/user-role.enum';
+
+type CurrentUserContext = { userId: string; role?: string };
 
 const ENTRY_INCLUDE = {
   subject: { select: { id: true, code: true, name: true } },
@@ -21,8 +24,26 @@ const ENTRY_INCLUDE = {
   periodRow: true,
 };
 
+const ACADEMIC_YEAR_SELECT = {
+  id: true,
+  label: true,
+  semester: true,
+  startDate: true,
+  endDate: true,
+  isActive: true,
+};
+
 const SCHEDULE_INCLUDE = {
-  classroom: { select: { id: true, name: true, gradeLevel: true, academicYear: true, semester: true } },
+  academicYear: { select: ACADEMIC_YEAR_SELECT },
+  // The schedule already carries `academicYear` (same year by @@unique[classroomId, academicYearId]),
+  // so the classroom doesn't re-embed it.
+  classroom: {
+    select: {
+      id: true,
+      name: true,
+      gradeLevel: true,
+    },
+  },
   entries: {
     where: { deletedAt: null },
     include: ENTRY_INCLUDE,
@@ -31,6 +52,16 @@ const SCHEDULE_INCLUDE = {
 };
 
 const DEFAULT_ACTIVE_DAYS = [1, 2, 3, 4, 5];
+const PUBLISHED_STATUS = 'published';
+const ARCHIVED_STATUS = 'archived';
+
+const SCHEDULE_STUDENT_SELECT = {
+  id: true,
+  userId: true,
+  nisn: true,
+  photoUrl: true,
+  user: { select: { id: true, fullName: true, avatarUrl: true } },
+};
 
 @Injectable()
 export class SchedulesService {
@@ -45,20 +76,18 @@ export class SchedulesService {
 
   async findAll(filters: {
     classroomId?: string;
-    academicYear?: string;
-    semester?: number;
+    academicYearId?: string;
     status?: ScheduleStatus;
     page?: number;
     limit?: number;
     search?: string;
   }) {
-    const { classroomId, academicYear, semester, status, page = 1, limit = 20, search } = filters;
+    const { classroomId, academicYearId, status, page = 1, limit = 20, search } = filters;
     const skip = (page - 1) * limit;
     const where = {
       deletedAt: null,
       ...(classroomId ? { classroomId } : {}),
-      ...(academicYear ? { academicYear } : {}),
-      ...(semester ? { semester } : {}),
+      ...(academicYearId ? { academicYearId } : {}),
       ...(status ? { status } : {}),
       ...(search ? { classroom: { name: { contains: search, mode: 'insensitive' as const } } } : {}),
     };
@@ -69,7 +98,7 @@ export class SchedulesService {
         include: SCHEDULE_INCLUDE,
         skip,
         take: limit,
-        orderBy: [{ academicYear: 'desc' }, { semester: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ academicYear: { label: 'desc' as const } }, { academicYear: { semester: 'desc' as const } }, { createdAt: 'desc' }],
       }),
       this.tenantPrisma.client.schedule.count({ where }),
     ]);
@@ -86,40 +115,38 @@ export class SchedulesService {
     return schedule;
   }
 
-  async findByClass(classroomId: string, academicYear?: string, semester?: number) {
+  async findByClass(classroomId: string, academicYearId?: string) {
     return this.tenantPrisma.client.schedule.findMany({
       where: {
         classroomId,
         deletedAt: null,
         status: { not: 'archived' },
-        ...(academicYear ? { academicYear } : {}),
-        ...(semester ? { semester } : {}),
+        ...(academicYearId ? { academicYearId } : {}),
       },
       include: SCHEDULE_INCLUDE,
-      orderBy: [{ academicYear: 'desc' }, { semester: 'desc' }],
+      orderBy: [{ academicYear: { label: 'desc' as const } }, { academicYear: { semester: 'desc' as const } }],
     });
   }
 
-  async findByTeacher(teacherProfileId: string, academicYear?: string, semester?: number) {
+  async findByTeacher(teacherProfileId: string, academicYearId?: string) {
     return this.tenantPrisma.client.schedule.findMany({
       where: {
         deletedAt: null,
         status: { not: 'archived' },
-        ...(academicYear ? { academicYear } : {}),
-        ...(semester ? { semester } : {}),
+        ...(academicYearId ? { academicYearId } : {}),
         entries: { some: { teacherProfileId, deletedAt: null } },
       },
       include: SCHEDULE_INCLUDE,
-      orderBy: [{ academicYear: 'desc' }, { semester: 'desc' }],
+      orderBy: [{ academicYear: { label: 'desc' as const } }, { academicYear: { semester: 'desc' as const } }],
     });
   }
 
-  async findByStudent(studentProfileId: string, academicYear?: string, semester?: number) {
+  async findByStudent(studentProfileId: string, academicYearId?: string) {
     const enrollments = await this.tenantPrisma.client.enrollment.findMany({
       where: {
         studentProfileId,
         status: 'active',
-        ...(academicYear ? { classroom: { academicYear } } : {}),
+        ...(academicYearId ? { classroom: { academicYearId } } : {}),
       },
       select: { classroomId: true },
     });
@@ -132,12 +159,82 @@ export class SchedulesService {
         classroomId: { in: classroomIds },
         deletedAt: null,
         status: { not: 'archived' },
-        ...(academicYear ? { academicYear } : {}),
-        ...(semester ? { semester } : {}),
+        ...(academicYearId ? { academicYearId } : {}),
       },
       include: SCHEDULE_INCLUDE,
-      orderBy: [{ academicYear: 'desc' }, { semester: 'desc' }],
+      orderBy: [{ academicYear: { label: 'desc' as const } }, { academicYear: { semester: 'desc' as const } }],
     });
+  }
+
+  async findForCurrentStudent(actor: CurrentUserContext, academicYearId?: string) {
+    this.requireRole(actor, [UserRole.student]);
+
+    const student = await this.tenantPrisma.client.studentProfile.findFirst({
+      where: { userId: actor.userId, status: 'active' },
+      select: SCHEDULE_STUDENT_SELECT,
+    });
+    if (!student) throw new NotFoundException('Active student profile not found for current user');
+
+    const effectiveAcademicYearId = await this.resolveAcademicYearId(academicYearId);
+    const schedules = await this.findPublishedStudentSchedules(student.id, effectiveAcademicYearId);
+
+    return {
+      student: this.mapStudent(student),
+      filters: { academicYearId: effectiveAcademicYearId ?? null },
+      schedules,
+    };
+  }
+
+  async findForParent(
+    actor: CurrentUserContext,
+    filters: { studentProfileId?: string; academicYearId?: string },
+  ) {
+    this.requireRole(actor, [UserRole.parent]);
+
+    const effectiveAcademicYearId = await this.resolveAcademicYearId(filters.academicYearId);
+    const guardians = await this.tenantPrisma.client.guardian.findMany({
+      where: {
+        userId: actor.userId,
+        ...(filters.studentProfileId ? { studentProfileId: filters.studentProfileId } : {}),
+        studentProfile: { status: 'active' },
+      },
+      include: {
+        studentProfile: {
+          select: SCHEDULE_STUDENT_SELECT,
+        },
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    if (!guardians.length) {
+      throw new NotFoundException(
+        filters.studentProfileId
+          ? `Linked student ${filters.studentProfileId} not found for this parent`
+          : 'No linked students found for this parent',
+      );
+    }
+
+    const children = await Promise.all(
+      guardians.map(async (guardian) => ({
+        student: this.mapStudent(guardian.studentProfile),
+        guardian: {
+          id: guardian.id,
+          name: guardian.name,
+          relationship: guardian.relationship,
+          isPrimary: guardian.isPrimary,
+        },
+        schedules: await this.findPublishedStudentSchedules(guardian.studentProfile.id, effectiveAcademicYearId),
+      })),
+    );
+
+    return {
+      parent: { userId: actor.userId },
+      filters: {
+        studentProfileId: filters.studentProfileId ?? null,
+        academicYearId: effectiveAcademicYearId ?? null,
+      },
+      children,
+    };
   }
 
   async create(dto: CreateScheduleDto) {
@@ -145,8 +242,7 @@ export class SchedulesService {
     return this.tenantPrisma.client.schedule.create({
       data: {
         classroomId: dto.classroomId,
-        academicYear: dto.academicYear,
-        semester: dto.semester,
+        academicYearId: dto.academicYearId,
         status: dto.status,
         copiedFromScheduleId: dto.copiedFromScheduleId,
       },
@@ -162,16 +258,19 @@ export class SchedulesService {
       where: { id },
       data: {
         classroomId: dto.classroomId,
-        academicYear: dto.academicYear,
-        semester: dto.semester,
+        academicYearId: dto.academicYearId,
         status: dto.status,
-        publishedAt: dto.status === 'published' && existing.status !== 'published' ? new Date() : undefined,
-        archivedAt: dto.status === 'archived' && existing.status !== 'archived' ? new Date() : undefined,
+        publishedAt:
+          String(dto.status) === PUBLISHED_STATUS && String(existing.status) !== PUBLISHED_STATUS ? new Date() : undefined,
+        archivedAt:
+          String(dto.status) === ARCHIVED_STATUS && String(existing.status) !== ARCHIVED_STATUS ? new Date() : undefined,
         copiedFromScheduleId: dto.copiedFromScheduleId,
       },
       include: SCHEDULE_INCLUDE,
     });
-    if (dto.status === 'published' && existing.status !== 'published') await this.notifySchedulePublished(schedule);
+    if (String(dto.status) === PUBLISHED_STATUS && String(existing.status) !== PUBLISHED_STATUS) {
+      await this.notifySchedulePublished(schedule);
+    }
     return schedule;
   }
 
@@ -182,7 +281,7 @@ export class SchedulesService {
       data: { status: 'published', publishedAt: new Date() },
       include: SCHEDULE_INCLUDE,
     });
-    if (existing.status !== 'published') await this.notifySchedulePublished(schedule);
+    if (String(existing.status) !== PUBLISHED_STATUS) await this.notifySchedulePublished(schedule);
     return schedule;
   }
 
@@ -250,8 +349,11 @@ export class SchedulesService {
 
   async listPeriodTemplates() {
     const templates = await this.tenantPrisma.client.periodTemplate.findMany({
-      include: { rows: { orderBy: { sortOrder: 'asc' } } },
-      orderBy: [{ academicYear: 'desc' }, { gradeLevel: 'asc' }],
+      include: {
+        academicYear: { select: ACADEMIC_YEAR_SELECT },
+        rows: { orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: [{ academicYear: { label: 'desc' as const } }, { gradeLevel: 'asc' }],
     });
     return templates.map((template) => this.withDerivedPeriodTimes(template));
   }
@@ -260,13 +362,16 @@ export class SchedulesService {
     try {
       const template = await this.tenantPrisma.client.periodTemplate.create({
         data: dto,
-        include: { rows: { orderBy: { sortOrder: 'asc' } } },
+        include: {
+          academicYear: { select: ACADEMIC_YEAR_SELECT },
+          rows: { orderBy: { sortOrder: 'asc' } },
+        },
       });
       return this.withDerivedPeriodTimes(template);
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         throw new ConflictException(
-          `Period template for grade ${dto.gradeLevel} and academic year '${dto.academicYear}' already exists`,
+          `Period template for grade ${dto.gradeLevel} and academic year ${dto.academicYearId} already exists`,
         );
       }
       throw error;
@@ -277,7 +382,10 @@ export class SchedulesService {
     const template = await this.tenantPrisma.client.periodTemplate.update({
       where: { id },
       data: dto,
-      include: { rows: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        academicYear: { select: ACADEMIC_YEAR_SELECT },
+        rows: { orderBy: { sortOrder: 'asc' } },
+      },
     });
     return this.withDerivedPeriodTimes(template);
   }
@@ -318,11 +426,51 @@ export class SchedulesService {
     if (!classroom) throw new NotFoundException(`Classroom ${classroomId} not found`);
   }
 
+  private requireRole(actor: CurrentUserContext, roles: UserRole[]) {
+    if (!actor?.userId || !roles.includes(actor.role as UserRole)) {
+      throw new ForbiddenException('You are not allowed to access this schedule resource');
+    }
+  }
+
+  private async resolveAcademicYearId(academicYearId?: string) {
+    if (academicYearId) return academicYearId;
+
+    const activeYear = await this.tenantPrisma.client.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+      orderBy: [{ label: 'desc' }, { semester: 'desc' }],
+    });
+
+    return activeYear?.id;
+  }
+
+  private async findPublishedStudentSchedules(studentProfileId: string, academicYearId?: string) {
+    const schedules = await this.findByStudent(studentProfileId, academicYearId);
+    return schedules.filter((schedule) => String(schedule.status) === PUBLISHED_STATUS);
+  }
+
+  private mapStudent(profile: {
+    id: string;
+    userId: string;
+    nisn: string | null;
+    photoUrl: string | null;
+    user?: { fullName?: string | null; avatarUrl?: string | null } | null;
+  }) {
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      fullName: profile.user?.fullName ?? null,
+      nisn: profile.nisn,
+      photoUrl: profile.photoUrl,
+      avatarUrl: profile.user?.avatarUrl ?? null,
+    };
+  }
+
   private async notifySchedulePublished(schedule: {
     id: string;
     classroomId: string;
-    academicYear: string;
-    semester: number;
+    academicYearId: string;
+    academicYear: { label: string; semester: number };
     classroom: { name: string; gradeLevel: number };
     entries: Array<{ teacher: { user: { id: string } } }>;
   }) {
@@ -351,7 +499,7 @@ export class SchedulesService {
     }
 
     const title = 'Class schedule published';
-    const body = `Schedule for ${schedule.classroom.name} semester ${schedule.semester} has been published.`;
+    const body = `Schedule for ${schedule.classroom.name} semester ${schedule.academicYear.semester} has been published.`;
     await this.notifications.createManyAndQueue(
       [...userIds].map((userId) => ({
         tenantSlug,
@@ -369,8 +517,9 @@ export class SchedulesService {
           classroomId: schedule.classroomId,
           classroomName: schedule.classroom.name,
           gradeLevel: String(schedule.classroom.gradeLevel),
-          academicYear: schedule.academicYear,
-          semester: String(schedule.semester),
+          academicYear: schedule.academicYear.label,
+          academicYearId: schedule.academicYearId,
+          semester: String(schedule.academicYear.semester),
         },
       })),
     );
