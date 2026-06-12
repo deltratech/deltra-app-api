@@ -536,6 +536,24 @@ export class SchedulesService {
     if (!teacher) throw new NotFoundException(`Active teacher profile ${dto.teacherProfileId} not found`);
     if (!room) throw new NotFoundException(`Room ${dto.roomId} not found`);
 
+    // A teacher may only be assigned to teach once they hold an approved, in-force
+    // SK Tugas Mengajar — i.e. a contract with status = active that has not expired.
+    const teachingAuthorization = await this.tenantPrisma.client.teacherContract.findFirst({
+      where: {
+        teacherProfileId: dto.teacherProfileId,
+        deletedAt: null,
+        status: 'active',
+        contractEndDate: { gte: new Date() },
+      },
+      select: { id: true },
+    });
+    if (!teachingAuthorization) {
+      throw new ConflictException(
+        'This teacher has no approved SK Tugas Mengajar (active teaching contract). ' +
+          'Generate and have the school admin approve their contract before assigning teaching.',
+      );
+    }
+
     const isPlaced = dto.dayOfWeek !== undefined || dto.periodRowId !== undefined;
     const hasFullPlacement = dto.dayOfWeek !== undefined && dto.periodRowId !== undefined;
     if (isPlaced && !hasFullPlacement) {

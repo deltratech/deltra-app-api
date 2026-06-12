@@ -141,7 +141,7 @@ export class UsersImportService {
 
         const passwordHash = row.password
           ? await bcrypt.hash(row.password, 12)
-          : await bcrypt.hash(this.tempPassword(), 10);
+          : await bcrypt.hash(this.tempPassword(), 12);
 
         await db.user.create({
           data: {

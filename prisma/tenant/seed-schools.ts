@@ -104,7 +104,6 @@ const PERIOD_ROWS = [
 const SCHOOL_CONFIGS: SchoolConfig[] = [
   {
     schema: 'tenant_school_1',
-    profile: 'strong',
     label: 'SMA Harmoni Cendekia',
     story:
       'Top-performing science-oriented branch. Attendance is disciplined, schedules are mostly published, and students are active in science, debate, and robotics activities.',
@@ -291,7 +290,6 @@ const SCHOOL_CONFIGS: SchoolConfig[] = [
   },
   {
     schema: 'tenant_school_2',
-    profile: 'growth',
     label: 'SMA Harmoni Mandiri',
     story:
       'Growing branch with a few operational gaps. Attendance is less stable, one timetable is still draft, and students have fewer high-level achievements.',
@@ -583,7 +581,17 @@ async function upsertUser(
     ? { email: user.email }
     : { username: user.username! };
   const existing = await db.user.findFirst({ where });
-  if (existing) return existing;
+  if (existing) {
+    return db.user.update({
+      where: { id: existing.id },
+      data: {
+        passwordHash,
+        role: user.role,
+        status: 'active',
+        deletedAt: null,
+      },
+    });
+  }
 
   return db.user.create({
     data: {

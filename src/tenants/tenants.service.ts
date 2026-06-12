@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
 import { MigrationResult, TenantProvisionService } from '../tenant/tenant-provision.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { SchoolLevel, SchoolLevelsDto } from './dto/school-levels.dto';
 import { toSchemaName } from '../tenant/tenant.utils';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
@@ -219,7 +220,26 @@ export class TenantsService {
       throw err;
     }
 
+    await this.saveSchoolLevels(tenant.id, dto);
     return tenant;
+  }
+
+  /** Persist which education levels a school offers (+ custom preschool sub-types). */
+  private async saveSchoolLevels(tenantId: string, dto: SchoolLevelsDto) {
+    if (dto.levelsOffered === undefined && dto.preschoolTypes === undefined) return;
+    const levelsOffered = (dto.levelsOffered ?? []).map(String);
+    const preschoolTypes = levelsOffered.includes(SchoolLevel.preschool)
+      ? (dto.preschoolTypes ?? []).map((t) => t.trim()).filter(Boolean)
+      : [];
+    try {
+      await this.prisma.tenantSettings.upsert({
+        where: { tenantId },
+        create: { tenantId, levelsOffered, preschoolTypes },
+        update: { levelsOffered, preschoolTypes },
+      });
+    } catch (e) {
+      this.logger.error(`saveSchoolLevels failed for tenant "${tenantId}"`, e as Error);
+    }
   }
 
   async update(id: string, dto: UpdateTenantDto) {
@@ -330,6 +350,7 @@ export class TenantsService {
         },
       });
 
+      await this.saveSchoolLevels(tenant.id, dto);
       return { tenant, adminUser };
     } catch (err) {
       this.logger.error(`register() failed for "${tenant.slug}", rolling back`, err);

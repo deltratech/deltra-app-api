@@ -14,6 +14,8 @@ interface RefreshPayload {
   isPlatformUser?: boolean;
   role?: string;
   networkId?: string;
+  impersonatorId?: string;
+  impersonatorRole?: string;
 }
 
 @Injectable()

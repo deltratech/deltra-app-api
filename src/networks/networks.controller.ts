@@ -47,13 +47,15 @@ export class NetworksController {
   @ApiOperation({ summary: 'List all users in one branch within the authenticated admin network' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'role', required: false })
   listUsersBySchool(
     @CurrentUser() user: any,
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('page', new ParseIntPipe({ optional: true })) page?: number,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('role') role?: string,
   ) {
-    return this.networksService.listUsersBySchool(user, schoolId, { page, limit });
+    return this.networksService.listUsersBySchool(user, schoolId, { page, limit, role });
   }
 
   @Put('me/branches/:branchId')

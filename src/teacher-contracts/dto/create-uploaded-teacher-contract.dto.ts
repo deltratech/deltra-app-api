@@ -1,25 +1,37 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
-import { TeacherContractTemplateType } from './create-teacher-contract.dto';
+import { DocumentCategory } from '../document-categories';
 
 export class CreateUploadedTeacherContractDto {
-  @ApiProperty({ description: 'Teacher profile ID linked to uploaded contract' })
-  @IsUUID()
-  teacherProfileId: string;
-
-  @ApiPropertyOptional({ enum: TeacherContractTemplateType, description: 'If omitted, inferred from employment status' })
+  @ApiPropertyOptional({ description: 'Teacher profile ID for teacher recipients' })
   @IsOptional()
-  @IsEnum(TeacherContractTemplateType)
-  templateType?: TeacherContractTemplateType;
+  @IsUUID()
+  teacherProfileId?: string;
+
+  @ApiPropertyOptional({ description: 'User ID for principal/staff recipients' })
+  @IsOptional()
+  @IsUUID()
+  recipientUserId?: string;
+
+  @ApiPropertyOptional({ enum: DocumentCategory, description: 'Contracts & SK document type' })
+  @IsOptional()
+  @IsEnum(DocumentCategory)
+  category?: DocumentCategory;
+
+  @ApiPropertyOptional({ description: 'Recipient type override (teacher/staff/principal)' })
+  @IsOptional()
+  @IsString()
+  recipientType?: string;
 
   @ApiProperty({ example: '2026-07-01' })
   @IsDateString()
   contractStartDate: string;
 
-  @ApiProperty({ example: '2027-06-30' })
+  @ApiPropertyOptional({ example: '2027-06-30', description: 'Optional for open-ended SK / position assignments' })
+  @IsOptional()
   @IsDateString()
-  contractEndDate: string;
+  contractEndDate?: string;
 
   @ApiPropertyOptional({ enum: EmploymentStatus })
   @IsOptional()

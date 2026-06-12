@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -12,30 +13,51 @@ import {
   Min,
 } from 'class-validator';
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
-
-export enum TeacherContractTemplateType {
-  guru_tetap = 'guru_tetap',
-  guru_honorer = 'guru_honorer',
-  staff = 'staff',
-}
+import { DocumentCategory } from '../document-categories';
 
 export enum TeacherContractStatus {
   draft = 'draft',
   pending_signature = 'pending_signature',
+  pending_approval = 'pending_approval',
+  approved = 'approved',
+  rejected = 'rejected',
   active = 'active',
+  archived = 'archived',
   expired = 'expired',
   renewed = 'renewed',
 }
 
 export class CreateTeacherContractDto {
-  @ApiProperty({ description: 'Teacher profile ID linked to the uploaded contract' })
-  @IsUUID()
-  teacherProfileId: string;
-
-  @ApiPropertyOptional({ enum: TeacherContractTemplateType, description: 'If omitted, inferred from employment status' })
+  @ApiPropertyOptional({ description: 'Teacher profile ID for teacher recipients' })
   @IsOptional()
-  @IsEnum(TeacherContractTemplateType)
-  templateType?: TeacherContractTemplateType;
+  @IsUUID()
+  teacherProfileId?: string;
+
+  @ApiPropertyOptional({ description: 'User ID for principal/staff recipients' })
+  @IsOptional()
+  @IsUUID()
+  recipientUserId?: string;
+
+  @ApiPropertyOptional({ enum: DocumentCategory, description: 'Official document category (drives approver/signer/side-effect)' })
+  @IsOptional()
+  @IsEnum(DocumentCategory)
+  category?: DocumentCategory;
+
+  @ApiPropertyOptional({ description: 'Recipient type override (teacher/staff/principal). Defaults from template/category.' })
+  @IsOptional()
+  @IsString()
+  recipientType?: string;
+
+  @ApiPropertyOptional({ description: 'Approver roles for this document, e.g. ["principal","network_admin"]', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  approverRoles?: string[];
+
+  @ApiPropertyOptional({ description: 'Category-specific structured data (e.g. teaching assignment items) stored as JSON' })
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
 
   @ApiPropertyOptional({ description: 'Template ID to use for DOCX generation' })
   @IsOptional()
@@ -46,9 +68,10 @@ export class CreateTeacherContractDto {
   @IsDateString()
   contractStartDate: string;
 
-  @ApiProperty({ example: '2027-06-30' })
+  @ApiPropertyOptional({ example: '2027-06-30', description: 'Optional for open-ended SK / position assignments' })
+  @IsOptional()
   @IsDateString()
-  contractEndDate: string;
+  contractEndDate?: string;
 
   @ApiPropertyOptional({
     enum: TeacherContractStatus,

@@ -13,6 +13,7 @@ const USER_SELECT = {
   fullName: true,
   avatarUrl: true,
   role: true,
+  contractApprover: true,
 };
 
 const SUBJECT_INCLUDE = {
