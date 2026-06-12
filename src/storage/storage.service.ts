@@ -20,9 +20,9 @@ export class StorageService implements OnModuleInit {
   private static readonly DEFAULT_USER = 'deltra';
   private static readonly DEFAULT_PASSWORD = 'deltra123';
   private static readonly DEFAULT_BUCKET = 'deltra-uploads';
-  private client: S3Client;
-  private bucket: string;
-  private publicUrl: string;
+  private client!: S3Client;
+  private bucket!: string;
+  private publicUrl!: string;
 
   constructor(private readonly config: ConfigService) {}
 

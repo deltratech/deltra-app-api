@@ -21,6 +21,29 @@ datasource db {
 // ENUMS
 // ============================================================================
 
+enum AssignmentType {
+  file_upload
+  online_exam // reserved for the exam platform (§9)
+
+  @@map("assignment_type")
+}
+
+enum AssignmentStatus {
+  draft // visible to the teacher only
+  published // visible to students; submissions open
+  closed // visible read-only; submissions blocked
+
+  @@map("assignment_status")
+}
+
+enum SubmissionStatus {
+  submitted // student handed in, awaiting grading
+  graded // teacher scored it
+  returned // teacher reopened it for revision (resubmission allowed)
+
+  @@map("submission_status")
+}
+
 enum UserRole {
   school_admin
   network_admin
@@ -279,17 +302,19 @@ model User {
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  studentProfile         StudentProfile?
-  teacherProfile         TeacherProfile?
-  guardianAccounts       Guardian[]
-  attendanceRecords      AttendanceRecord[]
-  attendanceRecordsUpdated AttendanceRecord[]     @relation("AttendanceUpdatedBy")
-  announcementsCreated   Announcement[]          @relation("AnnouncementCreatedBy")
-  announcementAuditLogs  AnnouncementAuditLog[]
-  announcementRecipients AnnouncementRecipient[]
-  pushDeviceTokens       PushDeviceToken[]
-  notificationRecipients NotificationRecipient[]
-  academicNotesCreated   AcademicNote[]          @relation("AcademicNoteCreatedBy")
+  studentProfile           StudentProfile?
+  teacherProfile           TeacherProfile?
+  guardianAccounts         Guardian[]
+  attendanceRecords        AttendanceRecord[]
+  attendanceRecordsUpdated AttendanceRecord[]      @relation("AttendanceUpdatedBy")
+  announcementsCreated     Announcement[]          @relation("AnnouncementCreatedBy")
+  announcementAuditLogs    AnnouncementAuditLog[]
+  announcementRecipients   AnnouncementRecipient[]
+  pushDeviceTokens         PushDeviceToken[]
+  notificationRecipients   NotificationRecipient[]
+  academicNotesCreated     AcademicNote[]          @relation("AcademicNoteCreatedBy")
+  assignmentsCreated       Assignment[]            @relation("AssignmentCreatedBy")
+  submissionsGraded        AssignmentSubmission[]  @relation("SubmissionGradedBy")
 
   @@map("users")
 }
@@ -325,6 +350,7 @@ model StudentProfile {
   academicNotes          AcademicNote[]
   attendanceRecords      AttendanceRecord[]
   announcementRecipients AnnouncementRecipient[]
+  assignmentSubmissions  AssignmentSubmission[]
 
   @@map("student_profiles")
 }
@@ -463,7 +489,9 @@ model Classroom {
   attendanceRecords   AttendanceRecord[]
   announcements       Announcement[]
   academicNotes       AcademicNote[]
-  academicYear        AcademicYear          @relation(fields: [academicYearId], references: [id])
+  assignments         Assignment[]
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
 
   @@unique([name, academicYearId])
   @@map("classrooms")
@@ -538,6 +566,7 @@ model Subject {
   scheduleEntries ScheduleEntry[]
   requirements    ScheduleRequirement[]
   academicNotes   AcademicNote[]
+  assignments     Assignment[]
 
   @@map("subjects")
 }
@@ -764,11 +793,11 @@ model ScheduleEntry {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  schedule  Schedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  subject   Subject        @relation(fields: [subjectId], references: [id])
-  teacher   TeacherProfile @relation(fields: [teacherProfileId], references: [id])
-  room      Room           @relation(fields: [roomId], references: [id])
-  periodRow PeriodRow?     @relation(fields: [periodRowId], references: [id])
+  schedule          Schedule           @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  subject           Subject            @relation(fields: [subjectId], references: [id])
+  teacher           TeacherProfile     @relation(fields: [teacherProfileId], references: [id])
+  room              Room               @relation(fields: [roomId], references: [id])
+  periodRow         PeriodRow?         @relation(fields: [periodRowId], references: [id])
   attendanceRecords AttendanceRecord[]
 
   @@index([teacherProfileId, dayOfWeek, periodRowId])
@@ -1045,7 +1074,112 @@ model AcademicYear {
   homeroomAssignments  HomeroomAssignment[]
   schedules            Schedule[]
   scheduleRequirements ScheduleRequirement[]
+  assignments          Assignment[]
 
   @@unique([label, semester])
   @@map("academic_years")
+}
+
+// ============================================================================
+// STUDENT Assignments
+// ============================================================================
+
+model Assignment {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId     String @map("classroom_id") @db.Uuid
+  subjectId       String @map("subject_id") @db.Uuid
+  academicYearId  String @map("academic_year_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+
+  type                AssignmentType @default(file_upload)
+  title               String
+  description         String?
+  dueAt               DateTime       @map("due_at") @db.Timestamptz(6)
+  maxScore            Decimal        @default(100) @map("max_score") @db.Decimal(5, 2)
+  allowLateSubmission Boolean        @default(true) @map("allow_late_submission")
+
+  status      AssignmentStatus @default(draft)
+  publishedAt DateTime?        @map("published_at") @db.Timestamptz(6)
+  closedAt    DateTime?        @map("closed_at") @db.Timestamptz(6)
+
+  /// Reserved for online_exam settings (openAt, durationMin, shuffle, maxAttempts…). NULL for file_upload.
+  examConfig Json? @map("exam_config") @db.JsonB
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  classroom    Classroom              @relation(fields: [classroomId], references: [id])
+  subject      Subject                @relation(fields: [subjectId], references: [id])
+  academicYear AcademicYear           @relation(fields: [academicYearId], references: [id])
+  attachments  AssignmentAttachment[]
+  submissions  AssignmentSubmission[]
+  createdBy    User                   @relation("AssignmentCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([classroomId, subjectId, academicYearId])
+  @@index([status, dueAt])
+  @@map("assignments")
+}
+
+/// Instruction files uploaded by the teacher.
+model AssignmentAttachment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assignmentId String   @map("assignment_id") @db.Uuid
+  fileUrl      String   @map("file_url")
+  fileName     String   @map("file_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@map("assignment_attachments")
+}
+
+/// One row per student per assignment — THE grade ledger.
+/// (The future exam platform writes its computed score into this same row, §9.)
+model AssignmentSubmission {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assignmentId     String @map("assignment_id") @db.Uuid
+  studentProfileId String @map("student_profile_id") @db.Uuid
+
+  status        SubmissionStatus @default(submitted)
+  submittedAt   DateTime         @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  isLate        Boolean          @default(false) @map("is_late")
+  attemptNumber Int              @default(1) @map("attempt_number")
+  notes         String? // optional student comment
+
+  score          Decimal?  @db.Decimal(5, 2)
+  feedback       String?
+  gradedByUserId String?   @map("graded_by_user_id") @db.Uuid
+  gradedAt       DateTime? @map("graded_at") @db.Timestamptz(6)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  assignment     Assignment             @relation(fields: [assignmentId], references: [id])
+  studentProfile StudentProfile         @relation(fields: [studentProfileId], references: [id])
+  attachments    SubmissionAttachment[]
+  gradedBy       User?                  @relation("SubmissionGradedBy", fields: [gradedByUserId], references: [id])
+
+  @@unique([assignmentId, studentProfileId])
+  @@index([studentProfileId])
+  @@index([assignmentId, status])
+  @@map("assignment_submissions")
+}
+
+/// Files uploaded by the student for one submission.
+model SubmissionAttachment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submissionId String   @map("submission_id") @db.Uuid
+  fileUrl      String   @map("file_url")
+  fileName     String   @map("file_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  submission AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("submission_attachments")
 }

@@ -30,6 +30,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AcademicNotesModule } from './academic-notes/academic-notes.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
+import { AssignmentsModule } from './assignments/assignments.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
     AcademicNotesModule,
     AttendanceModule,
     SuperadminModule,
+    AssignmentsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],

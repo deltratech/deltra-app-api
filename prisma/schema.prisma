@@ -51,7 +51,6 @@ enum TenantStatus {
   active
   inactive
   suspended
-  
 
   @@map("tenant_status")
 }
@@ -69,15 +68,15 @@ model Tenant {
   parentId  String?      @map("parent_id") @db.Uuid
   status    TenantStatus @default(active)
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime     @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime?                    @map("deleted_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
-  settings TenantSettings?
-  features TenantFeature[]
-  parent   Tenant?         @relation("TenantNetwork", fields: [parentId], references: [id])
-  schools  Tenant[]        @relation("TenantNetwork")
-  admins   PlatformUser[]  @relation("NetworkAdmins")
-  policies FoundationPolicyTemplate[]
+  settings  TenantSettings?
+  features  TenantFeature[]
+  parent    Tenant?                    @relation("TenantNetwork", fields: [parentId], references: [id])
+  schools   Tenant[]                   @relation("TenantNetwork")
+  admins    PlatformUser[]             @relation("NetworkAdmins")
+  policies  FoundationPolicyTemplate[]
   auditLogs FoundationAuditLog[]
 
   @@map("tenants")
@@ -85,11 +84,11 @@ model Tenant {
 
 /// Branding, locale, and academic configuration per tenant.
 model TenantSettings {
-  tenantId       String   @id    @map("tenant_id") @db.Uuid
-  logoUrl        String?         @map("logo_url")
-  bgImageUrl     String?         @map("bg_image_url")
-  primaryColor   String?         @map("primary_color")
-  secondaryColor String?         @map("secondary_color")
+  tenantId       String   @id @map("tenant_id") @db.Uuid
+  logoUrl        String?  @map("logo_url")
+  bgImageUrl     String?  @map("bg_image_url")
+  primaryColor   String?  @map("primary_color")
+  secondaryColor String?  @map("secondary_color")
   address        String?
   phone          String?
   email          String?
@@ -97,8 +96,8 @@ model TenantSettings {
   accreditation  String?
   timezone       String   @default("Asia/Jakarta")
   locale         String   @default("id")
-  academicYear   String?         @map("academic_year")
-  semester       Int?            @db.SmallInt
+  academicYear   String?  @map("academic_year")
+  semester       Int?     @db.SmallInt
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -126,36 +125,36 @@ model TenantFeature {
 /// Accounts for the SaaS operator team. NOT for school users.
 /// School users (admin, teacher, student, etc.) live in tenant_xxx.users.
 model PlatformUser {
-  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String              @unique @db.Citext
-  username     String?             @unique
-  passwordHash String              @map("password_hash")
-  fullName     String              @map("full_name")
-  role         PlatformUserRole    @default(superadmin)
-  networkId    String?             @map("network_id") @db.Uuid
-  status       PlatformUserStatus  @default(active)
-  lastLoginAt  DateTime?           @map("last_login_at") @db.Timestamptz(6)
-  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime            @updatedAt      @map("updated_at") @db.Timestamptz(6)
-  deletedAt    DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String             @unique @db.Citext
+  username     String?            @unique
+  passwordHash String             @map("password_hash")
+  fullName     String             @map("full_name")
+  role         PlatformUserRole   @default(superadmin)
+  networkId    String?            @map("network_id") @db.Uuid
+  status       PlatformUserStatus @default(active)
+  lastLoginAt  DateTime?          @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
 
-  network      Tenant?             @relation("NetworkAdmins", fields: [networkId], references: [id])
+  network             Tenant?              @relation("NetworkAdmins", fields: [networkId], references: [id])
   foundationAuditLogs FoundationAuditLog[]
 
   @@map("platform_users")
 }
 
 model FoundationPolicyTemplate {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  networkId   String   @map("network_id") @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  networkId   String    @map("network_id") @db.Uuid
   name        String
   category    String
   description String?
-  content     Json     @db.JsonB
-  version     Int      @default(1)
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  content     Json      @db.JsonB
+  version     Int       @default(1)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   network Tenant @relation(fields: [networkId], references: [id])
@@ -165,16 +164,16 @@ model FoundationPolicyTemplate {
 }
 
 model FoundationAuditLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  networkId String   @map("network_id") @db.Uuid
-  actorId   String   @map("actor_id") @db.Uuid
-  action    String
-  resource  String
-  resourceId String? @map("resource_id") @db.Uuid
-  metadata  Json?    @db.JsonB
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  networkId  String   @map("network_id") @db.Uuid
+  actorId    String   @map("actor_id") @db.Uuid
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id") @db.Uuid
+  metadata   Json?    @db.JsonB
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  network Tenant @relation(fields: [networkId], references: [id])
+  network Tenant       @relation(fields: [networkId], references: [id])
   actor   PlatformUser @relation(fields: [actorId], references: [id])
 
   @@index([networkId, createdAt])
