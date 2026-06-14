@@ -23,7 +23,7 @@ import { ClassroomsModule } from './classrooms/classrooms.module';
 import { AcademicYearsModule } from './academic-years/academic-years.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
-import { TeacherContractsModule } from './teacher-contracts/teacher-contracts.module';
+import { ContractsModule } from './contracts/contracts.module';
 import { NetworksModule } from './networks/networks.module';
 import { HomeroomAssignmentsModule } from './homeroom-assignments/homeroom-assignments.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
@@ -54,7 +54,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
     RoomsModule,
     SchedulesModule,
     TeacherUnavailabilityModule,
-    TeacherContractsModule,
+    ContractsModule,
     NetworksModule,
     HomeroomAssignmentsModule,
     AnnouncementsModule,

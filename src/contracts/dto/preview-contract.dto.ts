@@ -3,7 +3,7 @@ import { IsDateString, IsEnum, IsObject, IsOptional, IsString, IsUUID } from 'cl
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
 import { DocumentCategory } from '../document-categories';
 
-export class PreviewTeacherContractDto {
+export class PreviewContractDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

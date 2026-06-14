@@ -534,7 +534,7 @@ export class NetworksService {
       db.schedule.count({ where: { deletedAt: null } }),
       db.schedule.count({ where: { deletedAt: null, status: 'published' } }),
       db.homeroomAssignment.count({ where: { deletedAt: null, isActive: true } }),
-      db.teacherContract.count({ where: { deletedAt: null, status: { in: ['active', 'pending_signature', 'renewed'] } } }),
+      db.contract.count({ where: { deletedAt: null, status: { in: ['active', 'pending_signature', 'renewed'] } } }),
       this.countContractsWithin(db, contract30Cutoff, contract30Limit),
       this.countContractsWithin(db, contract30Cutoff, contract90Limit),
       this.prisma.tenantSettings.findUnique({ where: { tenantId: school.id }, select: { tenantId: true } }),
@@ -622,7 +622,7 @@ export class NetworksService {
   }
 
   private countContractsWithin(db: any, from: Date, to: Date) {
-    return db.teacherContract.count({
+    return db.contract.count({
       where: {
         deletedAt: null,
         contractEndDate: {

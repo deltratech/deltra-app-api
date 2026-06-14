@@ -23,6 +23,7 @@
     "docker:dev:logs": "docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api",
     "docker:dev:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml stop api",
     "db:bootstrap": "node scripts/bootstrap-db.js",
+    "migrate:tenants": "node scripts/migrate-tenants.js",
     "prisma:migrate:tenant": "prisma migrate dev --schema=prisma/tenant/schema.prisma",
     "prisma:generate:tenant": "prisma generate --schema=prisma/tenant/schema.prisma",
     "seed:platform": "ts-node --project tsconfig.seed.json prisma/seed.ts",

@@ -140,14 +140,48 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 
 
-## Schema Migration
+## Schema Migration (schema-per-tenant)
 
-# 1. Create migration against one dev tenant schema
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=tenant_template" \
-npx prisma migrate deploy --schema=prisma/tenant/schema.prisma
+Develop the change on `tenant_template`, fan it out to every tenant, then regenerate.
 
-# 2. Generate tenant client
+> `<USER>:<PASS>` must match your `.env` `DATABASE_URL` creds. The database name is `deltra`.
+> Never hard-code real secrets in this committed file.
+
+```bash
+# 1. Edit prisma/tenant/schema.prisma, then create the migration against the template
+DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=tenant_template" \
+  npx prisma migrate dev --name your_change --schema=prisma/tenant/schema.prisma
+
+# 1b. ⚠️ REVIEW & SLIM the generated migration.sql before fanning out (see warning below)
+
+# 2. Apply that migration to EVERY tenant schema (serial, with per-tenant reporting)
+DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=public" \
+  npm run migrate:tenants
+
+# 3. Regenerate the Prisma clients (tenant + public)
 npx prisma generate --schema=prisma/tenant/schema.prisma
+npx prisma generate
+```
 
-# 3. Apply to all tenant schemas
-POST /tenants/migrate-all
+> **⚠️ Step 1b is not optional.** `prisma migrate dev` diffs your schema against
+> **`tenant_template` specifically** and bundles in any *accumulated drift* it finds —
+> enum recreations, `RENAME CONSTRAINT`/`RENAME INDEX` batches, even a
+> schema-qualified `DROP TYPE "tenant_template".…`. Those statements encode the
+> template's exact object names and **are not portable** — they fail on tenant
+> schemas whose constraints/enums drifted independently (`constraint … does not
+> exist`, `current transaction is aborted`, etc.). **Open the generated
+> `migration.sql` and delete everything that is not your intended change, then make
+> the remaining statements idempotent** (`ADD COLUMN IF NOT EXISTS`, guarded
+> `CREATE TYPE`). Recover a half-failed tenant: delete its failed row
+> (`DELETE FROM <schema>._prisma_migrations WHERE migration_name='…'`) and re-run.
+
+Notes:
+
+- `migrate:tenants` skips `tenant_template` by default (already migrated in step 1).
+  `INCLUDE_TEMPLATE=true` to include it; `ONLY=tenant_a,tenant_b` to target a subset.
+- Pass `DATABASE_URL` inline in step 2 (with `?schema=public`) — the script reads it from the
+  environment to discover tenant schemas; an unset var makes it fail.
+- Do **not** use `POST /tenants/migrate-all` — it runs tenants concurrently and flakes on
+  Postgres advisory locks. The script runs them one at a time.
+- Write each `migration.sql` idempotently (`ADD COLUMN IF NOT EXISTS`, guarded `CREATE TYPE`),
+  since some schemas were historically patched with `prisma db push`.
