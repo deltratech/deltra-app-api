@@ -299,7 +299,7 @@ export class AuthService {
   }
 
   // ── Impersonation ("act as" a school user) ──────────────────────────────────
-  private static readonly IMPERSONATABLE_ROLES = ['school_admin', 'principal', 'finance', 'teacher', 'admission'];
+  private static readonly IMPERSONATABLE_ROLES = ['school_admin', 'principal', 'teacher', 'admission'];
 
   /** A foundation/network admin (or superadmin) acts as a specific user inside one
    *  of their child schools. The minted token's `sub` is the target user (so writes
