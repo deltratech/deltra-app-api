@@ -5,7 +5,7 @@
  * in Admin → Contracts → Templates without a manual upload. For each template it:
  *   1. extracts the docxtemplater variable keys from the .docx (same regex the API uses),
  *   2. uploads the file to MinIO under `shared/teacher-contract-templates/` (same as the API),
- *   3. upserts a TeacherContractTemplate row scoped to the tenant schema.
+ *   3. upserts a ContractTemplate row scoped to the tenant schema.
  *
  * Idempotent: re-running skips templates that already exist (matched by name+type+version).
  *
@@ -80,7 +80,7 @@ async function uploadDocx(buffer: Buffer): Promise<string> {
   return `${publicUrl}/${bucket}/${key}`;
 }
 
-// ── Variable extraction (mirrors TeacherContractsService.extractDocxVariableKeys) ──
+// ── Variable extraction (mirrors ContractsService.extractDocxVariableKeys) ──
 
 function extractVariableKeys(buffer: Buffer): string[] {
   const zip = new PizZip(buffer);
@@ -112,7 +112,7 @@ async function main() {
   let skipped = 0;
 
   for (const tpl of TEMPLATES) {
-    const existing = await prisma.teacherContractTemplate.findFirst({
+    const existing = await prisma.contractTemplate.findFirst({
       where: { deletedAt: null, name: tpl.name, version: 1 },
     });
     if (existing) {
@@ -127,7 +127,7 @@ async function main() {
 
     const templateFileUrl = await uploadDocx(buffer);
 
-    await prisma.teacherContractTemplate.create({
+    await prisma.contractTemplate.create({
       data: {
         name: tpl.name,
         variablesJson: variableKeys as any,

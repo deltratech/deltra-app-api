@@ -23,9 +23,11 @@ export enum DocumentCategory {
   sk_kepala_sekolah = 'sk_kepala_sekolah',
   sk_wakasek = 'sk_wakasek',
   sk_koordinator_kurikulum = 'sk_koordinator_kurikulum',
+  sk_koordinator = 'sk_koordinator',
   // Teaching assignment letters
   sk_tugas_mengajar = 'sk_tugas_mengajar',
   sk_wali_kelas = 'sk_wali_kelas',
+  sk_pembina_ekskul = 'sk_pembina_ekskul',
 }
 
 export type DocumentGroup = 'employment_contract' | 'employment_appointment' | 'position_assignment' | 'teaching_assignment';
@@ -168,6 +170,16 @@ export const DOCUMENT_CATEGORIES: Record<DocumentCategory, CategoryConfig> = {
     sideEffect: 'position',
     enabled: true,
   },
+  [DocumentCategory.sk_koordinator]: {
+    label: 'SK Koordinator',
+    group: 'position_assignment',
+    recipientType: 'staff',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: PRINCIPAL,
+    signerRole: PRINCIPAL,
+    sideEffect: 'position',
+    enabled: true,
+  },
   [DocumentCategory.sk_tugas_mengajar]: {
     label: 'SK Tugas Mengajar',
     group: 'teaching_assignment',
@@ -186,6 +198,16 @@ export const DOCUMENT_CATEGORIES: Record<DocumentCategory, CategoryConfig> = {
     approverRole: PRINCIPAL,
     signerRole: PRINCIPAL,
     sideEffect: 'homeroom',
+    enabled: true,
+  },
+  [DocumentCategory.sk_pembina_ekskul]: {
+    label: 'SK Pembina Ekskul',
+    group: 'teaching_assignment',
+    recipientType: 'teacher',
+    creatorRoles: [SCHOOL_ADMIN],
+    approverRole: PRINCIPAL,
+    signerRole: PRINCIPAL,
+    sideEffect: 'none',
     enabled: true,
   },
 };

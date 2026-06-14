@@ -15,7 +15,7 @@ import {
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
 import { DocumentCategory } from '../document-categories';
 
-export enum TeacherContractStatus {
+export enum ContractStatus {
   draft = 'draft',
   pending_signature = 'pending_signature',
   pending_approval = 'pending_approval',
@@ -27,7 +27,7 @@ export enum TeacherContractStatus {
   renewed = 'renewed',
 }
 
-export class CreateTeacherContractDto {
+export class CreateContractDto {
   @ApiPropertyOptional({ description: 'Teacher profile ID for teacher recipients' })
   @IsOptional()
   @IsUUID()
@@ -74,12 +74,12 @@ export class CreateTeacherContractDto {
   contractEndDate?: string;
 
   @ApiPropertyOptional({
-    enum: TeacherContractStatus,
+    enum: ContractStatus,
     description: 'Initial contract status. Defaults to draft when omitted.',
   })
   @IsOptional()
-  @IsEnum(TeacherContractStatus)
-  status?: TeacherContractStatus;
+  @IsEnum(ContractStatus)
+  status?: ContractStatus;
 
   @ApiPropertyOptional({ example: 'Guru Matematika' })
   @IsOptional()

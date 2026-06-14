@@ -538,7 +538,7 @@ export class SchedulesService {
 
     // A teacher may only be assigned to teach once they hold an approved, in-force
     // SK Tugas Mengajar — i.e. a contract with status = active that has not expired.
-    const teachingAuthorization = await this.tenantPrisma.client.teacherContract.findFirst({
+    const teachingAuthorization = await this.tenantPrisma.client.contract.findFirst({
       where: {
         teacherProfileId: dto.teacherProfileId,
         deletedAt: null,

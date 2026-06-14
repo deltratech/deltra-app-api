@@ -93,7 +93,7 @@ enum EmploymentStatus {
   @@map("employment_status")
 }
 
-enum TeacherContractStatus {
+enum ContractStatus {
   draft
   pending_signature
   pending_approval
@@ -116,8 +116,10 @@ enum DocumentCategory {
   perpanjangan_kontrak
   sk_tugas_mengajar
   sk_wali_kelas
+  sk_pembina_ekskul
   sk_wakasek
   sk_koordinator_kurikulum
+  sk_koordinator
   sk_kepala_sekolah
   sk_guru_tetap
   sk_guru_kontrak
@@ -308,7 +310,7 @@ model User {
   pushDeviceTokens       PushDeviceToken[]
   notificationRecipients NotificationRecipient[]
   academicNotesCreated AcademicNote[] @relation("AcademicNoteCreatedBy")
-  receivedContracts TeacherContract[] @relation("ContractRecipient")
+  receivedContracts Contract[] @relation("ContractRecipient")
 
   @@map("users")
 }
@@ -395,14 +397,14 @@ model TeacherProfile {
   scheduleEntries     ScheduleEntry[]
   requirements        ScheduleRequirement[]
   unavailability      TeacherUnavailability[]
-  contracts           TeacherContract[]
+  contracts           Contract[]
   homeroomAssignments HomeroomAssignment[]
   academicNotes       AcademicNote[]
 
   @@map("teacher_profiles")
 }
 
-model TeacherContract {
+model Contract {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   teacherProfileId          String?                     @map("teacher_profile_id") @db.Uuid
   recipientUserId           String?                     @map("recipient_user_id") @db.Uuid
@@ -411,7 +413,7 @@ model TeacherContract {
   recipientType             String?                     @map("recipient_type")
   approverRolesJson         Json?                       @map("approver_roles_json") @db.JsonB
   signaturesJson            Json?                       @map("signatures_json") @db.JsonB
-  status                    TeacherContractStatus       @default(draft)
+  status                    ContractStatus       @default(draft)
   contractStartDate         DateTime                    @map("contract_start_date") @db.Date
   contractEndDate           DateTime?                   @map("contract_end_date") @db.Date
   employmentStatus          EmploymentStatus?           @map("employment_status")
@@ -440,17 +442,17 @@ model TeacherContract {
 
   teacher  TeacherProfile?        @relation(fields: [teacherProfileId], references: [id])
   recipientUser User?             @relation("ContractRecipient", fields: [recipientUserId], references: [id])
-  template TeacherContractTemplate? @relation(fields: [templateId], references: [id])
+  template ContractTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([teacherProfileId])
   @@index([recipientUserId])
   @@index([status])
   @@index([category])
   @@index([contractStartDate, contractEndDate])
-  @@map("teacher_contracts")
+  @@map("contracts")
 }
 
-model TeacherContractTemplate {
+model ContractTemplate {
   id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   category     DocumentCategory?
@@ -468,10 +470,10 @@ model TeacherContractTemplate {
   updatedAt    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?                   @map("deleted_at") @db.Timestamptz(6)
 
-  contracts TeacherContract[]
+  contracts Contract[]
 
   @@index([isActive])
-  @@map("teacher_contract_templates")
+  @@map("contract_templates")
 }
 
 // ============================================================================

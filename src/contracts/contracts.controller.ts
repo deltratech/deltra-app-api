@@ -3,20 +3,20 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
-import { CreateTeacherContractDto, TeacherContractStatus } from './dto/create-teacher-contract.dto';
+import { CreateContractDto, ContractStatus } from './dto/create-contract.dto';
 import { DocumentCategory } from './document-categories';
-import { CreateUploadedTeacherContractDto } from './dto/create-uploaded-teacher-contract.dto';
-import { PreviewTeacherContractDto } from './dto/preview-teacher-contract.dto';
+import { CreateUploadedContractDto } from './dto/create-uploaded-contract.dto';
+import { PreviewContractDto } from './dto/preview-contract.dto';
 import { UpdateContractTemplateDto } from './dto/update-contract-template.dto';
-import { UpdateTeacherContractReminderDto } from './dto/update-teacher-contract-reminder.dto';
-import { UpdateTeacherContractDto } from './dto/update-teacher-contract.dto';
-import { TeacherContractsService } from './teacher-contracts.service';
+import { UpdateContractReminderDto } from './dto/update-contract-reminder.dto';
+import { UpdateContractDto } from './dto/update-contract.dto';
+import { ContractsService } from './contracts.service';
 
-@ApiTags('Teacher Contracts')
+@ApiTags('Contracts')
 @ApiBearerAuth()
 @Controller('contracts')
-export class TeacherContractsController {
-  constructor(private readonly teacherContractsService: TeacherContractsService) {}
+export class ContractsController {
+  constructor(private readonly contractsService: ContractsService) {}
 
   @Post('templates')
   @UseInterceptors(FileInterceptor('file'))
@@ -41,7 +41,7 @@ export class TeacherContractsController {
   ) {
     if (!file) throw new BadRequestException('No template file uploaded');
     this.validateDocxTemplateFile(file);
-    return this.teacherContractsService.createTemplate(dto, file, user);
+    return this.contractsService.createTemplate(dto, file, user);
   }
 
   @Post('templates/inspect')
@@ -52,7 +52,7 @@ export class TeacherContractsController {
   inspectTemplate(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No template file uploaded');
     this.validateDocxTemplateFile(file);
-    return this.teacherContractsService.inspectTemplateFile(file);
+    return this.contractsService.inspectTemplateFile(file);
   }
 
   @Post('templates/preview')
@@ -65,7 +65,7 @@ export class TeacherContractsController {
   async previewTemplateFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No template file uploaded');
     this.validateDocxTemplateFile(file);
-    return new StreamableFile(await this.teacherContractsService.previewTemplateFile(file));
+    return new StreamableFile(await this.contractsService.previewTemplateFile(file));
   }
 
   @Get('templates')
@@ -76,7 +76,7 @@ export class TeacherContractsController {
     @Query('isActive') isActive?: string,
     @Query('category') category?: DocumentCategory,
   ) {
-    return this.teacherContractsService.findTemplates({
+    return this.contractsService.findTemplates({
       isActive: isActive === undefined ? undefined : isActive === 'true',
       category,
     });
@@ -87,13 +87,13 @@ export class TeacherContractsController {
   @Header('Content-Type', 'application/pdf')
   @Header('Content-Disposition', 'inline; filename="template-preview.pdf"')
   async previewTemplate(@Param('id', ParseUUIDPipe) id: string) {
-    return new StreamableFile(await this.teacherContractsService.previewTemplateById(id));
+    return new StreamableFile(await this.contractsService.previewTemplateById(id));
   }
 
   @Get('templates/:id')
   @ApiOperation({ summary: 'Get contract template detail including extracted variables' })
   findTemplateOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.teacherContractsService.findTemplateOne(id);
+    return this.contractsService.findTemplateOne(id);
   }
 
   @Patch('templates/:id')
@@ -118,7 +118,7 @@ export class TeacherContractsController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (file) this.validateDocxTemplateFile(file);
-    return this.teacherContractsService.updateTemplate(id, dto, file, user);
+    return this.contractsService.updateTemplate(id, dto, file, user);
   }
 
   @Delete('templates/:id')
@@ -127,24 +127,24 @@ export class TeacherContractsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean; role?: string },
   ) {
-    return this.teacherContractsService.removeTemplate(id, user);
+    return this.contractsService.removeTemplate(id, user);
   }
 
   @Post('preview')
   @ApiOperation({ summary: 'Preview generated contract before finalization' })
   @Header('Content-Type', 'application/pdf')
   @Header('Content-Disposition', 'inline; filename="contract-preview.pdf"')
-  async preview(@Body() dto: PreviewTeacherContractDto) {
-    return new StreamableFile(await this.teacherContractsService.preview(dto));
+  async preview(@Body() dto: PreviewContractDto) {
+    return new StreamableFile(await this.contractsService.preview(dto));
   }
 
   @Post()
   @ApiOperation({ summary: 'Finalize and create generated teacher contract' })
   create(
-    @Body() dto: CreateTeacherContractDto,
+    @Body() dto: CreateContractDto,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.create(dto, user);
+    return this.contractsService.create(dto, user);
   }
 
   @Post('upload')
@@ -172,32 +172,32 @@ export class TeacherContractsController {
   })
   @ApiOperation({ summary: 'Create teacher contract by direct file upload (without template)' })
   createByUpload(
-    @Body() dto: CreateUploadedTeacherContractDto,
+    @Body() dto: CreateUploadedContractDto,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
     if (!file) throw new BadRequestException('No contract file uploaded');
     this.validateContractUploadFile(file);
-    return this.teacherContractsService.createByUpload(dto, file, user);
+    return this.contractsService.createByUpload(dto, file, user);
   }
 
   @Get()
   @ApiOperation({ summary: 'Retrieve contracts by staff, status, and period' })
   @ApiQuery({ name: 'teacherProfileId', required: false })
   @ApiQuery({ name: 'recipientUserId', required: false })
-  @ApiQuery({ name: 'status', enum: TeacherContractStatus, required: false })
+  @ApiQuery({ name: 'status', enum: ContractStatus, required: false })
   @ApiQuery({ name: 'category', enum: DocumentCategory, required: false })
   @ApiQuery({ name: 'periodStart', required: false, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'periodEnd', required: false, description: 'YYYY-MM-DD' })
   findAll(
     @Query('teacherProfileId') teacherProfileId?: string,
     @Query('recipientUserId') recipientUserId?: string,
-    @Query('status') status?: TeacherContractStatus,
+    @Query('status') status?: ContractStatus,
     @Query('category') category?: DocumentCategory,
     @Query('periodStart') periodStart?: string,
     @Query('periodEnd') periodEnd?: string,
   ) {
-    return this.teacherContractsService.findAll({
+    return this.contractsService.findAll({
       teacherProfileId,
       recipientUserId,
       status,
@@ -211,29 +211,29 @@ export class TeacherContractsController {
   @ApiOperation({ summary: 'List contracts approaching renewal' })
   @ApiQuery({ name: 'days', required: false, type: Number })
   renewalReminders(@Query('days') days?: string) {
-    return this.teacherContractsService.findRenewalReminders(days ? Number(days) : 30);
+    return this.contractsService.findRenewalReminders(days ? Number(days) : 30);
   }
 
   @Get('my')
   @ApiOperation({ summary: 'Teacher self-view contracts' })
   myContracts(@CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean }) {
-    return this.teacherContractsService.findMyContracts(user);
+    return this.contractsService.findMyContracts(user);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get teacher contract by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.teacherContractsService.findOne(id);
+    return this.contractsService.findOne(id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Edit generated contract before/after PDF generation' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateTeacherContractDto,
+    @Body() dto: UpdateContractDto,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.update(id, dto, user);
+    return this.contractsService.update(id, dto, user);
   }
 
   @Patch(':id/submit')
@@ -242,7 +242,7 @@ export class TeacherContractsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.submit(id, user);
+    return this.contractsService.submit(id, user);
   }
 
   @Patch(':id/publish')
@@ -251,7 +251,7 @@ export class TeacherContractsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.publish(id, user);
+    return this.contractsService.publish(id, user);
   }
 
   @Patch(':id/reject')
@@ -261,7 +261,7 @@ export class TeacherContractsController {
     @Body() body: { reason?: string },
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean; role?: string },
   ) {
-    return this.teacherContractsService.reject(id, body.reason ?? '', user);
+    return this.contractsService.reject(id, body.reason ?? '', user);
   }
 
   @Patch(':id/approve')
@@ -271,17 +271,17 @@ export class TeacherContractsController {
     @Body() body: { eSignature: string },
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean; role?: string },
   ) {
-    return this.teacherContractsService.approve(id, body.eSignature, user);
+    return this.contractsService.approve(id, body.eSignature, user);
   }
 
   @Patch(':id/reminder')
   @ApiOperation({ summary: 'Create or edit renewal reminder for a contract' })
   updateReminder(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateTeacherContractReminderDto,
+    @Body() dto: UpdateContractReminderDto,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.updateReminder(id, dto, user);
+    return this.contractsService.updateReminder(id, dto, user);
   }
 
   @Delete(':id')
@@ -290,7 +290,7 @@ export class TeacherContractsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { userId: string; tenantSlug?: string; isSuperAdmin?: boolean },
   ) {
-    return this.teacherContractsService.remove(id, user);
+    return this.contractsService.remove(id, user);
   }
 
   private validateDocxTemplateFile(file: Express.Multer.File) {

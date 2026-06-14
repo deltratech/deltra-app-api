@@ -7,14 +7,14 @@ import { EmploymentStatus } from '../common/enums/employment-status.enum';
 import PizZip from 'pizzip';
 import { CreateContractTemplateDto } from './dto/create-contract-template.dto';
 import {
-  CreateTeacherContractDto,
-  TeacherContractStatus,
-} from './dto/create-teacher-contract.dto';
-import { CreateUploadedTeacherContractDto } from './dto/create-uploaded-teacher-contract.dto';
-import { PreviewTeacherContractDto } from './dto/preview-teacher-contract.dto';
+  CreateContractDto,
+  ContractStatus,
+} from './dto/create-contract.dto';
+import { CreateUploadedContractDto } from './dto/create-uploaded-contract.dto';
+import { PreviewContractDto } from './dto/preview-contract.dto';
 import { UpdateContractTemplateDto } from './dto/update-contract-template.dto';
-import { UpdateTeacherContractReminderDto } from './dto/update-teacher-contract-reminder.dto';
-import { UpdateTeacherContractDto } from './dto/update-teacher-contract.dto';
+import { UpdateContractReminderDto } from './dto/update-contract-reminder.dto';
+import { UpdateContractDto } from './dto/update-contract.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { DocumentCategory, getCategoryConfig, isCategoryEnabled, guessSlotRole, SIGNATURE_SLOT_ROLES, APPROVER_ROLES, RECIPIENT_TYPES } from './document-categories';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -47,7 +47,7 @@ const PROFILE_INCLUDE = {
 } as const;
 
 @Injectable()
-export class TeacherContractsService {
+export class ContractsService {
   constructor(
     private readonly tenantPrisma: PrismaTenantService,
     private readonly storage: StorageService,
@@ -56,7 +56,7 @@ export class TeacherContractsService {
 
   async createTemplate(dto: CreateContractTemplateDto, file: Express.Multer.File, actor: ActorContext) {
     this.assertCanCreate(actor);
-    const existing = await this.tenantPrisma.client.teacherContractTemplate.findFirst({
+    const existing = await this.tenantPrisma.client.contractTemplate.findFirst({
       where: {
         deletedAt: null,
         name: dto.name,
@@ -72,11 +72,11 @@ export class TeacherContractsService {
       file.buffer,
       file.originalname,
       file.mimetype,
-      'teacher-contract-templates',
+      'contract-templates',
       'shared',
     );
 
-    return this.tenantPrisma.client.teacherContractTemplate.create({
+    return this.tenantPrisma.client.contractTemplate.create({
       data: {
         name: dto.name,
         category: (dto.category ?? null) as any,
@@ -96,7 +96,7 @@ export class TeacherContractsService {
   }
 
   findTemplates(filters: { isActive?: boolean; category?: DocumentCategory }) {
-    return this.tenantPrisma.client.teacherContractTemplate.findMany({
+    return this.tenantPrisma.client.contractTemplate.findMany({
       where: {
         deletedAt: null,
         ...(typeof filters.isActive === 'boolean' ? { isActive: filters.isActive } : {}),
@@ -107,7 +107,7 @@ export class TeacherContractsService {
   }
 
   async findTemplateOne(id: string) {
-    const template = await this.tenantPrisma.client.teacherContractTemplate.findFirst({
+    const template = await this.tenantPrisma.client.contractTemplate.findFirst({
       where: { id, deletedAt: null },
     });
     if (!template) throw new NotFoundException(`Contract template ${id} not found`);
@@ -190,7 +190,7 @@ export class TeacherContractsService {
 
   /** Render a stored DOCX template to a PDF for preview (placeholders shown as-is). */
   async previewTemplateById(id: string): Promise<Buffer> {
-    const template = await this.tenantPrisma.client.teacherContractTemplate.findFirst({
+    const template = await this.tenantPrisma.client.contractTemplate.findFirst({
       where: { id, deletedAt: null },
     });
     if (!template) throw new NotFoundException(`Contract template ${id} not found`);
@@ -201,7 +201,7 @@ export class TeacherContractsService {
 
   async updateTemplate(id: string, dto: UpdateContractTemplateDto, file: Express.Multer.File | undefined, actor: ActorContext) {
     this.assertCanCreate(actor);
-    const existing = await this.tenantPrisma.client.teacherContractTemplate.findFirst({
+    const existing = await this.tenantPrisma.client.contractTemplate.findFirst({
       where: { id, deletedAt: null },
     });
     if (!existing) throw new NotFoundException(`Contract template ${id} not found`);
@@ -222,7 +222,7 @@ export class TeacherContractsService {
         file.buffer,
         file.originalname,
         file.mimetype,
-        'teacher-contract-templates',
+        'contract-templates',
         'shared',
       );
       const existingTemplateFileUrl = (existing as any).templateFileUrl as string | undefined;
@@ -235,7 +235,7 @@ export class TeacherContractsService {
       };
     }
 
-    return this.tenantPrisma.client.teacherContractTemplate.update({
+    return this.tenantPrisma.client.contractTemplate.update({
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -259,13 +259,13 @@ export class TeacherContractsService {
     this.assertCanCreate(actor);
     const template = await this.findTemplateOne(id);
     if (template.templateFileUrl) await this.storage.delete(template.templateFileUrl);
-    return this.tenantPrisma.client.teacherContractTemplate.update({
+    return this.tenantPrisma.client.contractTemplate.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
   }
 
-  async preview(dto: PreviewTeacherContractDto) {
+  async preview(dto: PreviewContractDto) {
     const payload = await this.buildRenderedContract(dto);
     if (!payload.template?.templateFileUrl) {
       throw new BadRequestException('Selected template has no DOCX file');
@@ -278,7 +278,7 @@ export class TeacherContractsService {
     return this.convertDocxToPdf(renderedDocxBuffer.buffer, 'contract-preview.docx');
   }
 
-  async create(dto: CreateTeacherContractDto, actor: ActorContext) {
+  async create(dto: CreateContractDto, actor: ActorContext) {
     this.assertCanCreate(actor);
     if (!dto.templateId) {
       throw new BadRequestException('templateId is required to generate a contract from DOCX template');
@@ -309,7 +309,7 @@ export class TeacherContractsService {
       generatedPdfBuffer,
       generatedPdfFileName,
       'application/pdf',
-      'teacher-contracts-generated',
+      'contracts-generated',
       actor.tenantSlug ?? 'shared',
       generatedPdfFileName,
     );
@@ -329,7 +329,7 @@ export class TeacherContractsService {
       ?? (Array.isArray(tpl?.approverRolesJson) ? (tpl!.approverRolesJson as string[]) : undefined)
       ?? (category ? [getCategoryConfig(category).approverRole] : null);
 
-    const created = await this.tenantPrisma.client.teacherContract.create({
+    const created = await this.tenantPrisma.client.contract.create({
       data: {
         teacherProfileId: payload.teacherProfileId,
         recipientUserId: payload.recipientUserId,
@@ -338,7 +338,7 @@ export class TeacherContractsService {
         recipientType,
         approverRolesJson: (approverRoles ?? undefined) as any,
         payloadJson: (dto.payload ?? undefined) as any,
-        status: (dto.status ?? TeacherContractStatus.draft) as any,
+        status: (dto.status ?? ContractStatus.draft) as any,
         contractStartDate: start,
         contractEndDate: end,
         employmentStatus: (dto.employmentStatus ?? undefined) as EmploymentStatusLike | undefined,
@@ -365,7 +365,7 @@ export class TeacherContractsService {
     return created;
   }
 
-  async createByUpload(dto: CreateUploadedTeacherContractDto, file: Express.Multer.File, actor: ActorContext) {
+  async createByUpload(dto: CreateUploadedContractDto, file: Express.Multer.File, actor: ActorContext) {
     this.assertCanCreate(actor);
     const recipient = await this.resolveRecipient(dto);
 
@@ -391,19 +391,19 @@ export class TeacherContractsService {
       file.buffer,
       finalFileName,
       file.mimetype,
-      'teacher-contracts-uploaded',
+      'contracts-uploaded',
       actor.tenantSlug ?? 'shared',
       finalFileName,
     );
 
-    return this.tenantPrisma.client.teacherContract.create({
+    return this.tenantPrisma.client.contract.create({
       data: {
         teacherProfileId: recipient.teacherProfileId,
         recipientUserId: recipient.recipientUserId,
         templateId: null,
         category: category as any,
         recipientType,
-        status: TeacherContractStatus.draft as any,
+        status: ContractStatus.draft as any,
         contractStartDate: start,
         contractEndDate: end,
         employmentStatus: employmentStatus as EmploymentStatusLike,
@@ -430,12 +430,12 @@ export class TeacherContractsService {
   findAll(filters: {
     teacherProfileId?: string;
     recipientUserId?: string;
-    status?: TeacherContractStatus;
+    status?: ContractStatus;
     category?: DocumentCategory;
     periodStart?: string;
     periodEnd?: string;
   }) {
-    return this.tenantPrisma.client.teacherContract.findMany({
+    return this.tenantPrisma.client.contract.findMany({
       where: {
         deletedAt: null,
         ...(filters.teacherProfileId ? { teacherProfileId: filters.teacherProfileId } : {}),
@@ -461,7 +461,7 @@ export class TeacherContractsService {
   }
 
   async findOne(id: string) {
-    const data = await this.tenantPrisma.client.teacherContract.findFirst({
+    const data = await this.tenantPrisma.client.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
         teacher: { include: { user: true } },
@@ -473,8 +473,8 @@ export class TeacherContractsService {
     return data;
   }
 
-  update(id: string, dto: UpdateTeacherContractDto, actor: ActorContext) {
-    return this.tenantPrisma.client.teacherContract.update({
+  update(id: string, dto: UpdateContractDto, actor: ActorContext) {
+    return this.tenantPrisma.client.contract.update({
       where: { id },
       data: {
         ...(dto.contractStartDate ? { contractStartDate: new Date(dto.contractStartDate) } : {}),
@@ -496,10 +496,10 @@ export class TeacherContractsService {
     if (contract.status !== 'draft' && contract.status !== 'rejected') {
       throw new ConflictException('Only draft or rejected documents can be submitted');
     }
-    const updated = await this.tenantPrisma.client.teacherContract.update({
+    const updated = await this.tenantPrisma.client.contract.update({
       where: { id },
       data: {
-        status: TeacherContractStatus.pending_approval as any,
+        status: ContractStatus.pending_approval as any,
         rejectedAt: null,
         rejectReason: null,
         updatedByUserId: actor.userId,
@@ -565,10 +565,10 @@ export class TeacherContractsService {
     if (contract.status !== 'pending_approval' && contract.status !== 'pending_signature') {
       throw new ConflictException('Only submitted documents can be rejected');
     }
-    return this.tenantPrisma.client.teacherContract.update({
+    return this.tenantPrisma.client.contract.update({
       where: { id },
       data: {
-        status: TeacherContractStatus.rejected as any,
+        status: ContractStatus.rejected as any,
         rejectedAt: new Date(),
         rejectReason: reason ?? null,
         approverUserId: actor.userId,
@@ -635,7 +635,7 @@ export class TeacherContractsService {
           signedPdfBuffer,
           signedPdfFileName,
           'application/pdf',
-          'teacher-contracts-generated',
+          'contracts-generated',
           actor.tenantSlug ?? 'shared',
           signedPdfFileName,
         );
@@ -651,10 +651,10 @@ export class TeacherContractsService {
     }
 
     const now = new Date();
-    const signed = await this.tenantPrisma.client.teacherContract.update({
+    const signed = await this.tenantPrisma.client.contract.update({
       where: { id },
       data: {
-        status: TeacherContractStatus.active as any,
+        status: ContractStatus.active as any,
         eSignature,
         approverUserId: contract.approverUserId ?? actor.userId,
         approvedAt: contract.approvedAt ?? now,
@@ -696,7 +696,7 @@ export class TeacherContractsService {
         priority: NotificationPriority.normal,
         sourceType: NotificationSourceType.contract,
         sourceId: contract.id,
-        data: { pageId: 'teacher-contracts' },
+        data: { pageId: 'contracts' },
       });
     } catch {
       // Best-effort.
@@ -776,9 +776,9 @@ export class TeacherContractsService {
     }
   }
 
-  async updateReminder(id: string, dto: UpdateTeacherContractReminderDto, actor: ActorContext) {
+  async updateReminder(id: string, dto: UpdateContractReminderDto, actor: ActorContext) {
     await this.findOne(id);
-    return this.tenantPrisma.client.teacherContract.update({
+    return this.tenantPrisma.client.contract.update({
       where: { id },
       data: {
         renewalReminderAt: new Date(dto.renewalReminderAt),
@@ -793,7 +793,7 @@ export class TeacherContractsService {
       select: { id: true },
     });
     if (profile) return this.findAll({ teacherProfileId: profile.id });
-    return this.tenantPrisma.client.teacherContract.findMany({
+    return this.tenantPrisma.client.contract.findMany({
       where: { deletedAt: null, recipientUserId: actor.userId },
       include: {
         teacher: { include: { user: { select: { id: true, fullName: true, email: true } } } },
@@ -807,7 +807,7 @@ export class TeacherContractsService {
   /** Soft-delete a contract/document. */
   async remove(id: string, actor: ActorContext) {
     await this.findOne(id); // 404 if it doesn't exist
-    return this.tenantPrisma.client.teacherContract.update({
+    return this.tenantPrisma.client.contract.update({
       where: { id },
       data: { deletedAt: new Date(), updatedByUserId: actor.userId },
     });
@@ -819,11 +819,11 @@ export class TeacherContractsService {
    * whose period has not ended. Null when the teacher has none.
    */
   async findActiveTeachingAuthorization(teacherProfileId: string) {
-    return this.tenantPrisma.client.teacherContract.findFirst({
+    return this.tenantPrisma.client.contract.findFirst({
       where: {
         teacherProfileId,
         deletedAt: null,
-        status: TeacherContractStatus.active as any,
+        status: ContractStatus.active as any,
         contractEndDate: { gte: new Date() },
       },
       orderBy: { contractEndDate: 'desc' },
@@ -834,10 +834,10 @@ export class TeacherContractsService {
   findRenewalReminders(days = 30) {
     const now = new Date();
     const until = this.addDays(now, days);
-    return this.tenantPrisma.client.teacherContract.findMany({
+    return this.tenantPrisma.client.contract.findMany({
       where: {
         deletedAt: null,
-        status: { in: [TeacherContractStatus.active as any, TeacherContractStatus.draft as any] },
+        status: { in: [ContractStatus.active as any, ContractStatus.draft as any] },
         contractEndDate: { gte: now, lte: until },
       },
       include: {
@@ -848,9 +848,9 @@ export class TeacherContractsService {
     });
   }
 
-  private async buildRenderedContract(dto: PreviewTeacherContractDto | CreateTeacherContractDto) {
+  private async buildRenderedContract(dto: PreviewContractDto | CreateContractDto) {
     const template = 'templateId' in dto && dto.templateId
-      ? await this.tenantPrisma.client.teacherContractTemplate.findFirst({ where: { id: dto.templateId, deletedAt: null, isActive: true } })
+      ? await this.tenantPrisma.client.contractTemplate.findFirst({ where: { id: dto.templateId, deletedAt: null, isActive: true } })
       : null;
     if (!template) throw new BadRequestException('templateId is required and must reference an active template');
 
@@ -962,7 +962,7 @@ export class TeacherContractsService {
       employmentStatus?: string | null;
       classSubjects?: Array<{ subject?: { name?: string | null } | null; classroom?: { name?: string | null } | null }>;
     },
-    dto: PreviewTeacherContractDto | CreateTeacherContractDto,
+    dto: PreviewContractDto | CreateContractDto,
   ): Record<string, string> {
     const fullName = teacher.user?.fullName ?? '';
     const genderLabel =
@@ -1005,7 +1005,7 @@ export class TeacherContractsService {
 
   private buildUserVariableMap(
     user: { fullName?: string | null; email?: string | null; phone?: string | null; role?: string | null } | null | undefined,
-    dto: PreviewTeacherContractDto | CreateTeacherContractDto,
+    dto: PreviewContractDto | CreateContractDto,
   ): Record<string, string> {
     const fullName = user?.fullName ?? '';
     const roleTitle = ('roleTitle' in dto && dto.roleTitle) ? dto.roleTitle : this.formatRoleLabel(user?.role);

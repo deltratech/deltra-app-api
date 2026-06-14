@@ -3,7 +3,7 @@ import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-valida
 import { EmploymentStatus } from '../../common/enums/employment-status.enum';
 import { DocumentCategory } from '../document-categories';
 
-export class CreateUploadedTeacherContractDto {
+export class CreateUploadedContractDto {
   @ApiPropertyOptional({ description: 'Teacher profile ID for teacher recipients' })
   @IsOptional()
   @IsUUID()
