@@ -98,14 +98,34 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 
 
-## Schema Migration
+## Schema Migration (schema-per-tenant)
 
-# 1. Create migration against one dev tenant schema
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=tenant_template" \
-npx prisma migrate deploy --schema=prisma/tenant/schema.prisma
+Develop the change on `tenant_template`, fan it out to every tenant, then regenerate.
 
-# 2. Generate tenant client
+> `<USER>:<PASS>` must match your `.env` `DATABASE_URL` creds. The database name is `deltra`.
+> Never hard-code real secrets in this committed file.
+
+```bash
+# 1. Edit prisma/tenant/schema.prisma, then create the migration against the template
+DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=tenant_template" \
+  npx prisma migrate dev --name your_change --schema=prisma/tenant/schema.prisma
+
+# 2. Apply that migration to EVERY tenant schema (serial, with per-tenant reporting)
+DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=public" \
+  npm run migrate:tenants
+
+# 3. Regenerate the Prisma clients (tenant + public)
 npx prisma generate --schema=prisma/tenant/schema.prisma
+npx prisma generate
+```
 
-# 3. Apply to all tenant schemas
-POST /tenants/migrate-all
+Notes:
+
+- `migrate:tenants` skips `tenant_template` by default (already migrated in step 1).
+  `INCLUDE_TEMPLATE=true` to include it; `ONLY=tenant_a,tenant_b` to target a subset.
+- Pass `DATABASE_URL` inline in step 2 (with `?schema=public`) — the script reads it from the
+  environment to discover tenant schemas; an unset var makes it fail.
+- Do **not** use `POST /tenants/migrate-all` — it runs tenants concurrently and flakes on
+  Postgres advisory locks. The script runs them one at a time.
+- Write each `migration.sql` idempotently (`ADD COLUMN IF NOT EXISTS`, guarded `CREATE TYPE`),
+  since some schemas were historically patched with `prisma db push`.
