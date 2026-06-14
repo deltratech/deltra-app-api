@@ -248,6 +248,20 @@ export class NetworksService {
     const networkId = this.requireNetworkAccess(user);
     await this.findBranch(networkId, branchId);
 
+    // Persist education levels when provided (preschool sub-types only kept when
+    // preschool is offered). Skipped entirely when neither field is sent.
+    if (dto.levelsOffered !== undefined || dto.preschoolTypes !== undefined) {
+      const levelsOffered = (dto.levelsOffered ?? []).map(String);
+      const preschoolTypes = levelsOffered.includes('preschool')
+        ? (dto.preschoolTypes ?? []).map((t) => t.trim()).filter(Boolean)
+        : [];
+      await this.prisma.tenantSettings.upsert({
+        where: { tenantId: branchId },
+        create: { tenantId: branchId, levelsOffered, preschoolTypes },
+        update: { levelsOffered, preschoolTypes },
+      });
+    }
+
     const branch = await this.prisma.tenant.update({
       where: { id: branchId },
       data: { name: dto.name },
