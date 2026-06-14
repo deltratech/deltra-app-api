@@ -456,6 +456,22 @@ export class TenantsService {
     return settings;
   }
 
+  /**
+   * The education levels (+ preschool sub-types) a school offers. Lives on the
+   * public TenantSettings, but tenant-scoped features (classrooms, admission)
+   * need it — read it by the tenantId from the caller's JWT. Safe default: empty.
+   */
+  async getLevels(tenantId: string): Promise<{ levelsOffered: string[]; preschoolTypes: string[] }> {
+    const settings = await this.prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { levelsOffered: true, preschoolTypes: true },
+    });
+    return {
+      levelsOffered: settings?.levelsOffered ?? [],
+      preschoolTypes: settings?.preschoolTypes ?? [],
+    };
+  }
+
   async upsertSettings(tenantId: string, dto: UpsertTenantSettingsDto) {
     await this.findOne(tenantId);
     return this.prisma.tenantSettings.upsert({

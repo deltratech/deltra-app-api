@@ -1,11 +1,22 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { getTenantContext } from '../tenant/tenant.context';
 import { paginatedResult } from '../common/utils/paginate';
+
+/** Grade numbers each education level maps to. Preschool uses 0 as a sentinel —
+ *  its named sub-type lives in the classroom name. */
+const LEVEL_GRADES: Record<string, number[]> = {
+  preschool: [0],
+  primary: [1, 2, 3, 4, 5, 6],
+  secondary: [7, 8, 9, 10, 11, 12],
+};
 import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { UpdateClassroomDto } from './dto/update-classroom.dto';
 import { AssignClassroomDto } from './dto/assign-classroom.dto';
@@ -26,7 +37,34 @@ type CurrentUserContext = { userId: string; role?: UserRole };
 
 @Injectable()
 export class ClassroomsService {
-  constructor(private readonly tenantPrisma: PrismaTenantService) {}
+  constructor(
+    private readonly tenantPrisma: PrismaTenantService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /** Grade numbers allowed for this school, derived from its offered levels.
+   *  Empty levelsOffered = all levels (backward compatible). */
+  private async allowedGrades(): Promise<Set<number>> {
+    const { tenantId } = getTenantContext();
+    const settings = await this.prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { levelsOffered: true },
+    });
+    const offered = settings?.levelsOffered ?? [];
+    const levels = offered.length ? offered : Object.keys(LEVEL_GRADES);
+    const allowed = new Set<number>();
+    for (const lvl of levels) (LEVEL_GRADES[lvl] ?? []).forEach((g) => allowed.add(g));
+    return allowed;
+  }
+
+  private async assertGradeOffered(gradeLevel: number): Promise<void> {
+    const allowed = await this.allowedGrades();
+    if (!allowed.has(gradeLevel)) {
+      throw new BadRequestException(
+        `Grade ${gradeLevel} is not available for this school's education levels.`,
+      );
+    }
+  }
 
   private requireRole(actor: CurrentUserContext, roles: UserRole[]) {
     if (!actor?.userId || !roles.includes(actor.role as UserRole)) {
@@ -143,6 +181,7 @@ export class ClassroomsService {
   }
 
   async create(dto: CreateClassroomDto) {
+    await this.assertGradeOffered(dto.gradeLevel);
     await this.ensureUnique(dto.name, dto.academicYearId);
 
     return this.tenantPrisma.client.classroom.create({
@@ -153,6 +192,8 @@ export class ClassroomsService {
 
   async update(id: string, dto: UpdateClassroomDto) {
     const existing = await this.findOne(id);
+
+    if (dto.gradeLevel !== undefined) await this.assertGradeOffered(dto.gradeLevel);
 
     const name = dto.name ?? existing.name;
     const academicYearId = dto.academicYearId ?? existing.academicYearId;
