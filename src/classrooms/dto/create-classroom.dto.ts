@@ -7,9 +7,9 @@ export class CreateClassroomDto {
   @IsNotEmpty()
   name!: string;
 
-  @ApiProperty({ example: 10, description: '0 = preschool (sentinel), 1–12 = numeric grades' })
+  @ApiProperty({ example: 10, description: '1–12 = numeric grades; ≤ 0 = preschool sub-type by index (0, -1, -2, …)' })
   @IsInt()
-  @Min(0)
+  @Min(-50)
   @Max(12)
   gradeLevel!: number;
 

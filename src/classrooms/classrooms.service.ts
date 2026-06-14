@@ -10,10 +10,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from '../tenant/tenant.context';
 import { paginatedResult } from '../common/utils/paginate';
 
-/** Grade numbers each education level maps to. Preschool uses 0 as a sentinel —
- *  its named sub-type lives in the classroom name. */
-const LEVEL_GRADES: Record<string, number[]> = {
-  preschool: [0],
+// Numeric grade ranges. Preschool is handled separately: each configured
+// sub-type maps to a non-positive grade by index (0, -1, -2, …).
+const NUMERIC_LEVEL_GRADES: Record<'primary' | 'secondary', number[]> = {
   primary: [1, 2, 3, 4, 5, 6],
   secondary: [7, 8, 9, 10, 11, 12],
 };
@@ -43,17 +42,24 @@ export class ClassroomsService {
   ) {}
 
   /** Grade numbers allowed for this school, derived from its offered levels.
+   *  Preschool allows one non-positive grade per configured sub-type (0,-1,-2,…).
    *  Empty levelsOffered = all levels (backward compatible). */
   private async allowedGrades(): Promise<Set<number>> {
     const { tenantId } = getTenantContext();
     const settings = await this.prisma.tenantSettings.findUnique({
       where: { tenantId },
-      select: { levelsOffered: true },
+      select: { levelsOffered: true, preschoolTypes: true },
     });
     const offered = settings?.levelsOffered ?? [];
-    const levels = offered.length ? offered : Object.keys(LEVEL_GRADES);
+    const preschoolTypes = settings?.preschoolTypes ?? [];
+    const levels = offered.length ? offered : ['preschool', 'primary', 'secondary'];
     const allowed = new Set<number>();
-    for (const lvl of levels) (LEVEL_GRADES[lvl] ?? []).forEach((g) => allowed.add(g));
+    if (levels.includes('preschool')) {
+      const n = Math.max(1, preschoolTypes.length);
+      for (let i = 0; i < n; i++) allowed.add(-i); // 0, -1, …, -(n-1)
+    }
+    if (levels.includes('primary')) NUMERIC_LEVEL_GRADES.primary.forEach((g) => allowed.add(g));
+    if (levels.includes('secondary')) NUMERIC_LEVEL_GRADES.secondary.forEach((g) => allowed.add(g));
     return allowed;
   }
 
@@ -98,7 +104,7 @@ export class ClassroomsService {
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
       ...(academicYearId ? { academicYearId } : {}),
-      ...(gradeLevel ? { gradeLevel } : {}),
+      ...(gradeLevel !== undefined ? { gradeLevel } : {}),
     };
 
     const [data, total] = await Promise.all([
