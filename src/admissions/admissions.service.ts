@@ -45,16 +45,7 @@ export class AdmissionsService {
    * offering all of them, so existing schools keep working unchanged.
    */
   async getOfferedLevels(): Promise<AdmissionSchoolLevel[]> {
-    const all = Object.values(AdmissionSchoolLevel) as AdmissionSchoolLevel[];
-    const { tenantId } = getTenantContext();
-    const settings = await this.prisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { levelsOffered: true },
-    });
-    const offered = (settings?.levelsOffered ?? []).filter((l): l is AdmissionSchoolLevel =>
-      (all as string[]).includes(l),
-    );
-    return offered.length ? offered : all;
+    return (await this.readTenantLevels()).offered;
   }
 
   /** Reject a school level the school doesn't offer. */
@@ -348,9 +339,12 @@ export class AdmissionsService {
   }
 
   // ── Level settings (test gate / cut-off / grades) ────────────────────────────
-  private defaultSetting(schoolLevel: AdmissionSchoolLevel) {
+  /** Defaults for a level. Pre-school grade labels default to the school's
+   *  configured preschool sub-types (e.g. "Kiddy 1", "Kiddy 2") when set. */
+  private defaultSetting(schoolLevel: AdmissionSchoolLevel, preschoolTypes: string[] = []) {
+    const preschoolGrades = preschoolTypes.length ? preschoolTypes : ['Toddler', 'K1', 'K2', 'KG A', 'KG B'];
     const grades: Record<AdmissionSchoolLevel, string[]> = {
-      [AdmissionSchoolLevel.preschool]: ['Toddler', 'K1', 'K2', 'KG A', 'KG B'],
+      [AdmissionSchoolLevel.preschool]: preschoolGrades,
       [AdmissionSchoolLevel.primary]: ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'],
       [AdmissionSchoolLevel.secondary]: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
     };
@@ -362,13 +356,27 @@ export class AdmissionsService {
     };
   }
 
+  /** Read the school's offered levels + preschool sub-types from public TenantSettings. */
+  private async readTenantLevels(): Promise<{ offered: AdmissionSchoolLevel[]; preschoolTypes: string[] }> {
+    const all = Object.values(AdmissionSchoolLevel) as AdmissionSchoolLevel[];
+    const { tenantId } = getTenantContext();
+    const settings = await this.prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { levelsOffered: true, preschoolTypes: true },
+    });
+    const offered = (settings?.levelsOffered ?? []).filter((l): l is AdmissionSchoolLevel =>
+      (all as string[]).includes(l),
+    );
+    return { offered: offered.length ? offered : all, preschoolTypes: settings?.preschoolTypes ?? [] };
+  }
+
   /** The offered levels, each merged with stored overrides (or sensible defaults). */
   async listLevelSettings() {
-    const offered = await this.getOfferedLevels();
+    const { offered, preschoolTypes } = await this.readTenantLevels();
     const rows = await this.tenantPrisma.client.admissionLevelSetting.findMany();
     const byLevel = new Map(rows.map((r) => [r.schoolLevel as AdmissionSchoolLevel, r]));
     return offered.map((lvl) => {
-      const d = this.defaultSetting(lvl);
+      const d = this.defaultSetting(lvl, preschoolTypes);
       const row = byLevel.get(lvl);
       if (!row) return d;
       const grades = Array.isArray(row.gradeLabels) ? (row.gradeLabels as string[]) : d.gradeLabels;
@@ -382,9 +390,10 @@ export class AdmissionsService {
   }
 
   async getLevelSetting(schoolLevel: AdmissionSchoolLevel) {
+    const { preschoolTypes } = await this.readTenantLevels();
+    const d = this.defaultSetting(schoolLevel, preschoolTypes);
     const row = await this.tenantPrisma.client.admissionLevelSetting.findUnique({ where: { schoolLevel } });
-    if (!row) return this.defaultSetting(schoolLevel);
-    const d = this.defaultSetting(schoolLevel);
+    if (!row) return d;
     const grades = Array.isArray(row.gradeLabels) ? (row.gradeLabels as string[]) : d.gradeLabels;
     return {
       schoolLevel, hasTestGate: row.hasTestGate, enrollmentCutoff: row.enrollmentCutoff,
