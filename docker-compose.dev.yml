@@ -1,0 +1,19 @@
+# Local hot-reload dev for the API. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d api
+#
+# Runs the Dockerfile `development` stage (nest start --watch) and mounts your
+# host source into the container, so saving a .ts file hot-reloads in ~1s with
+# NO image rebuild. node_modules stays the container's own (anonymous volume),
+# so the host's modules / OS never shadow the installed deps + prisma client.
+services:
+  api:
+    # Distinct local tag so a dev build never masquerades as the GHCR :latest.
+    image: deltra-app-api-dev:latest
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    command: npm run start:dev
+    volumes:
+      - .:/app
+      - /app/node_modules
