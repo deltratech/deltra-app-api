@@ -1034,7 +1034,6 @@ export class ContractsService {
       school_admin: 'Staff Admin',
       network_admin: 'Yayasan',
       teacher: 'Guru',
-      finance: 'Finance',
       staff: 'Staff',
     };
     return role ? labels[role] ?? role : '';

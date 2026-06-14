@@ -25,7 +25,6 @@ enum UserRole {
   school_admin
   network_admin
   principal
-  finance
   teacher
   student
   parent
@@ -280,7 +279,7 @@ enum PeriodKind {
 // IDENTITY & ACCESS
 // ============================================================================
 
-/// All user accounts for this school — admin, finance, principal, teacher, student.
+/// All user accounts for this school — admin, principal, teacher, student.
 /// Authentication always resolves tenant from subdomain first, then looks here.
 model User {
   id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
