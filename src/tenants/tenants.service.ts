@@ -278,6 +278,11 @@ export class TenantsService {
     `;
 
     if (!updated) throw new NotFoundException(`Tenant ${id} not found`);
+
+    // Persist education levels on edit too (create/register already do this).
+    // saveSchoolLevels no-ops when neither field is present in the payload.
+    await this.saveSchoolLevels(id, dto);
+
     return updated;
   }
 
