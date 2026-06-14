@@ -110,6 +110,8 @@ Develop the change on `tenant_template`, fan it out to every tenant, then regene
 DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=tenant_template" \
   npx prisma migrate dev --name your_change --schema=prisma/tenant/schema.prisma
 
+# 1b. ⚠️ REVIEW & SLIM the generated migration.sql before fanning out (see warning below)
+
 # 2. Apply that migration to EVERY tenant schema (serial, with per-tenant reporting)
 DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=public" \
   npm run migrate:tenants
@@ -118,6 +120,18 @@ DATABASE_URL="postgresql://<USER>:<PASS>@localhost:5432/deltra?schema=public" \
 npx prisma generate --schema=prisma/tenant/schema.prisma
 npx prisma generate
 ```
+
+> **⚠️ Step 1b is not optional.** `prisma migrate dev` diffs your schema against
+> **`tenant_template` specifically** and bundles in any *accumulated drift* it finds —
+> enum recreations, `RENAME CONSTRAINT`/`RENAME INDEX` batches, even a
+> schema-qualified `DROP TYPE "tenant_template".…`. Those statements encode the
+> template's exact object names and **are not portable** — they fail on tenant
+> schemas whose constraints/enums drifted independently (`constraint … does not
+> exist`, `current transaction is aborted`, etc.). **Open the generated
+> `migration.sql` and delete everything that is not your intended change, then make
+> the remaining statements idempotent** (`ADD COLUMN IF NOT EXISTS`, guarded
+> `CREATE TYPE`). Recover a half-failed tenant: delete its failed row
+> (`DELETE FROM <schema>._prisma_migrations WHERE migration_name='…'`) and re-run.
 
 Notes:
 
