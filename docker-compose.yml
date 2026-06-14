@@ -1,5 +1,8 @@
 services:
   api:
+    # Pulled from GHCR on the deploy host (CI builds & pushes it). `build` is kept
+    # so local `docker compose build api` still works and tags the same name.
+    image: ghcr.io/deltratech/deltra-app-api:latest
     build:
       context: .
       target: production

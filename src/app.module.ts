@@ -20,6 +20,7 @@ import { StudentPortfoliosModule } from './student-portfolios/student-portfolios
 import { StudentAchievementsModule } from './student-achievements/student-achievements.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
+import { AcademicYearsModule } from './academic-years/academic-years.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { TeacherUnavailabilityModule } from './teacher-unavailability/teacher-unavailability.module';
 import { TeacherContractsModule } from './teacher-contracts/teacher-contracts.module';
@@ -49,6 +50,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
     StudentPortfoliosModule,
     StudentAchievementsModule,
     ClassroomsModule,
+    AcademicYearsModule,
     RoomsModule,
     SchedulesModule,
     TeacherUnavailabilityModule,

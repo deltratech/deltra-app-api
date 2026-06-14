@@ -44,6 +44,48 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Local development with Docker (hot reload)
+
+The default `docker compose up -d api` builds the **production** image, which bakes
+the source into the image — so every code change forces a slow `--build`. For local
+development use the `docker-compose.dev.yml` override instead: it runs the Dockerfile
+`development` stage (`nest start --watch`) and bind-mounts your source, so saving a
+`.ts` file hot-reloads in ~1s with **no image rebuild**.
+
+```bash
+# Start the API in hot-reload mode (builds the dev image, then watches)
+$ npm run docker:dev
+
+# Tail the nest watcher (shows "File change detected → compiling")
+$ npm run docker:dev:logs
+
+# Stop the dev API container
+$ npm run docker:dev:down
+```
+
+Then just edit any `.ts` file and save — nest recompiles inside the container.
+
+Notes:
+
+- **Only rebuild when dependencies change.** If you edit `package.json`, re-run
+  `npm run docker:dev` (it always passes `--build`). If you ever see
+  `sh: nest: not found`, the anonymous `node_modules` volume is stale from a prior
+  production image — flush it once:
+
+  ```bash
+  $ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --renew-anon-volumes api
+  ```
+
+- **Migrations do not auto-run in dev mode.** The production `CMD` runs
+  `npm run db:bootstrap` on start; `nest start --watch` does not. After a Prisma
+  schema change, apply it manually (see [Schema Migration](#schema-migration)).
+
+- To go back to the production container (e.g. on the deploy host):
+
+  ```bash
+  $ docker compose up -d --build api
+  ```
+
 ## Run tests
 
 ```bash

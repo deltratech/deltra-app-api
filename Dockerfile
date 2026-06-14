@@ -1,26 +1,29 @@
+# syntax=docker/dockerfile:1
 FROM node:24-alpine AS base
 WORKDIR /app
 ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deltra?schema=public"
 COPY package*.json ./
 
 FROM base AS development
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
-RUN npx prisma generate
-RUN npx prisma generate --schema=prisma/tenant/schema.prisma
+RUN npx prisma generate && npx prisma generate --schema=prisma/tenant/schema.prisma
 CMD ["npm", "run", "start:dev"]
 
 FROM base AS builder
-RUN npm ci
+# sharing=locked: serialize with the production stage's npm ci so the package
+# tarballs are downloaded ONCE into the shared cache, not twice in parallel.
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 COPY . .
-RUN npx prisma generate
-RUN npx prisma generate --schema=prisma/tenant/schema.prisma
+RUN npx prisma generate && npx prisma generate --schema=prisma/tenant/schema.prisma
 RUN npm run build
 
 FROM node:24-alpine AS production
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Reuses the warm npm cache populated by the builder stage → installs from disk,
+# no network re-download.
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/prisma ./prisma
