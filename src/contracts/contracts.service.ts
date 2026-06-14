@@ -915,13 +915,21 @@ export class ContractsService {
         select: { id: true, fullName: true, email: true, phone: true, role: true },
       });
       if (!user) throw new NotFoundException(`Recipient user ${input.recipientUserId} not found`);
+      // recipientUserId is the canonical recipient; if the user also has a teacher
+      // profile, link it so teaching/homeroom side-effects still apply.
+      const teacher = await this.tenantPrisma.client.teacherProfile.findFirst({
+        where: { userId: user.id, deletedAt: null },
+        include: PROFILE_INCLUDE,
+      });
       return {
-        teacher: null,
-        user,
+        teacher,
+        user: teacher?.user ?? user,
         fullName: user.fullName,
-        teacherProfileId: null,
+        teacherProfileId: teacher?.id ?? null,
         recipientUserId: user.id,
-        recipientType: input.recipientType ?? (user.role === UserRole.principal ? 'principal' : 'staff'),
+        recipientType:
+          input.recipientType ??
+          (user.role === UserRole.principal ? 'principal' : teacher ? 'teacher' : 'staff'),
       };
     }
 
