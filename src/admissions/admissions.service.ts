@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import * as ExcelJS from 'exceljs';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaTenantService } from '../prisma/prisma-tenant.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { getTenantContext } from '../tenant/tenant.context';
 import { StorageService } from '../storage/storage.service';
 import { paginatedResult } from '../common/utils/paginate';
 import { CreateApplicationDto } from './dto/create-application.dto';
@@ -32,9 +34,36 @@ export class AdmissionsService {
     private readonly tenantPrisma: PrismaTenantService,
     private readonly storage: StorageService,
     private readonly stages: StagesService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private get db() { return this.tenantPrisma.client.admissionApplication; }
+
+  /**
+   * The school levels this tenant offers, read from the public TenantSettings by
+   * the request's tenantId. A school that never set levels (empty) is treated as
+   * offering all of them, so existing schools keep working unchanged.
+   */
+  async getOfferedLevels(): Promise<AdmissionSchoolLevel[]> {
+    const all = Object.values(AdmissionSchoolLevel) as AdmissionSchoolLevel[];
+    const { tenantId } = getTenantContext();
+    const settings = await this.prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { levelsOffered: true },
+    });
+    const offered = (settings?.levelsOffered ?? []).filter((l): l is AdmissionSchoolLevel =>
+      (all as string[]).includes(l),
+    );
+    return offered.length ? offered : all;
+  }
+
+  /** Reject a school level the school doesn't offer. */
+  async assertLevelOffered(level: AdmissionSchoolLevel): Promise<void> {
+    const offered = await this.getOfferedLevels();
+    if (!offered.includes(level)) {
+      throw new BadRequestException(`This school does not offer the "${level}" level.`);
+    }
+  }
 
   private decorate<T extends { documents?: { status: string }[]; enrolledAt?: Date | null; blockedAt?: Date | null }>(app: T) {
     const docs = app.documents ?? [];
@@ -183,6 +212,7 @@ export class AdmissionsService {
   }
 
   async create(dto: CreateApplicationDto) {
+    await this.assertLevelOffered(dto.schoolLevel);
     const isPreschool = dto.schoolLevel === AdmissionSchoolLevel.preschool;
     const seq = await this.db.count({ where: { academicYear: dto.academicYear } });
     const applicationNo = `APP-${dto.academicYear.split('-')[0]}-${String(seq + 1).padStart(4, '0')}`;
@@ -332,11 +362,12 @@ export class AdmissionsService {
     };
   }
 
-  /** All three levels, each merged with stored overrides (or sensible defaults). */
+  /** The offered levels, each merged with stored overrides (or sensible defaults). */
   async listLevelSettings() {
+    const offered = await this.getOfferedLevels();
     const rows = await this.tenantPrisma.client.admissionLevelSetting.findMany();
     const byLevel = new Map(rows.map((r) => [r.schoolLevel as AdmissionSchoolLevel, r]));
-    return Object.values(AdmissionSchoolLevel).map((lvl) => {
+    return offered.map((lvl) => {
       const d = this.defaultSetting(lvl);
       const row = byLevel.get(lvl);
       if (!row) return d;

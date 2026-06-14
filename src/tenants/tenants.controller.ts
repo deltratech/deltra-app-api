@@ -73,6 +73,12 @@ export class TenantsController {
     return this.tenantsService.findAll({ search, page, limit });
   }
 
+  @Get('me/levels')
+  @ApiOperation({ summary: "Education levels (+ preschool sub-types) the caller's school offers" })
+  getMyLevels(@CurrentUser() user: { tenantId?: string }) {
+    return this.tenantsService.getLevels(user.tenantId ?? '');
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a tenant by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
