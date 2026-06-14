@@ -20,6 +20,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:bootstrap": "node scripts/bootstrap-db.js",
+    "migrate:tenants": "node scripts/migrate-tenants.js",
     "prisma:migrate:tenant": "prisma migrate dev --schema=prisma/tenant/schema.prisma",
     "prisma:generate:tenant": "prisma generate --schema=prisma/tenant/schema.prisma",
     "seed:platform": "ts-node --project tsconfig.seed.json prisma/seed.ts",
